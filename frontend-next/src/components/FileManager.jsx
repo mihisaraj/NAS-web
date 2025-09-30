@@ -109,6 +109,8 @@ const FileManager = ({
   const currentPathRef = useRef(currentPath);
   const refreshRef = useRef(() => {});
   const updatePathRef = useRef(() => {});
+  const lastRealtimeUpdateRef = useRef(0);
+  const fallbackRefreshIntervalRef = useRef(null);
 
   useEffect(() => {
     setCurrentPath(startingPath);
@@ -208,12 +210,36 @@ const FileManager = ({
   }, [items, quickLook.open, quickLook.item]);
 
   useEffect(() => {
-    const unsubscribe = subscribeToEvents((event) => {
-      if (!event || event.type !== 'items') {
+    const MIN_REALTIME_REFRESH_INTERVAL = 600;
+
+    const requestRefresh = () => {
+      const now = Date.now();
+      if (now - lastRealtimeUpdateRef.current < MIN_REALTIME_REFRESH_INTERVAL) {
         return;
       }
+      lastRealtimeUpdateRef.current = now;
+      refreshRef.current();
+    };
 
-      const data = event.data || {};
+    const stopFallbackRefresh = () => {
+      if (fallbackRefreshIntervalRef.current) {
+        clearInterval(fallbackRefreshIntervalRef.current);
+        fallbackRefreshIntervalRef.current = null;
+      }
+    };
+
+    const scheduleFallbackRefresh = (intervalMs = 10000) => {
+      if (fallbackRefreshIntervalRef.current) {
+        return;
+      }
+      const delay = Math.max(3000, intervalMs);
+      fallbackRefreshIntervalRef.current = setInterval(() => {
+        requestRefresh();
+      }, delay);
+    };
+
+    const handleItemsEvent = (event) => {
+      const data = event?.data || {};
       const normalizedCurrent = sanitizePath(currentPathRef.current || '');
       const normalizedPaths = Array.isArray(data.paths)
         ? data.paths.map((value) => sanitizePath(value || ''))
@@ -264,7 +290,7 @@ const FileManager = ({
           return;
         }
         if (sanitizedDesired === normalizedCurrent) {
-          refreshRef.current();
+          requestRefresh();
           return;
         }
       }
@@ -285,7 +311,35 @@ const FileManager = ({
         });
 
       if (shouldRefresh) {
-        refreshRef.current();
+        requestRefresh();
+      }
+    };
+
+    const unsubscribe = subscribeToEvents((event) => {
+      if (!event) {
+        return;
+      }
+
+      if (event.type === 'connection') {
+        const state = event.data?.state;
+        if (state === 'open') {
+          lastRealtimeUpdateRef.current = Date.now();
+          stopFallbackRefresh();
+        } else if (state === 'error') {
+          scheduleFallbackRefresh(6000);
+        } else if (state === 'closed') {
+          scheduleFallbackRefresh(10000);
+        }
+        return;
+      }
+
+      if (event.type === 'items' || event.type === 'message') {
+        handleItemsEvent(event);
+        return;
+      }
+
+      if (event.data && (Array.isArray(event.data.paths) || Array.isArray(event.data.items))) {
+        handleItemsEvent(event);
       }
     });
 
@@ -293,6 +347,7 @@ const FileManager = ({
       if (typeof unsubscribe === 'function') {
         unsubscribe();
       }
+      stopFallbackRefresh();
     };
   }, []);
 

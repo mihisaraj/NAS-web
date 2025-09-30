@@ -131,8 +131,8 @@ const FileManager = ({
   const updatePathRef = useRef(() => {});
   const lastRealtimeUpdateRef = useRef(0);
   const softRefreshRef = useRef(false);
+  const hasStartedPollingRef = useRef(false);
   const [softRefreshing, setSoftRefreshing] = useState(false);
-  const [connectionState, setConnectionState] = useState('idle');
 
   const applyRealtimeUpdates = useCallback((incomingItems, normalizedCurrentPath) => {
     if (!Array.isArray(incomingItems) || incomingItems.length === 0) {
@@ -465,7 +465,6 @@ const FileManager = ({
 
       if (event.type === 'connection') {
         const state = event.data?.state || 'unknown';
-        setConnectionState(state);
         if (state === 'open') {
           lastRealtimeUpdateRef.current = Date.now();
         } else if (state === 'error' || state === 'closed') {
@@ -525,10 +524,7 @@ const FileManager = ({
       return undefined;
     }
 
-    if (connectionState === 'open') {
-      return undefined;
-    }
-
+    const POLL_INTERVAL_MS = 30000;
     let intervalId = null;
 
     const stopInterval = () => {
@@ -544,13 +540,15 @@ const FileManager = ({
       }
       intervalId = window.setInterval(() => {
         refreshRef.current({ soft: true });
-      }, 30000);
+      }, POLL_INTERVAL_MS);
     };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        if (connectionState !== 'open') {
+        if (hasStartedPollingRef.current) {
           refreshRef.current({ soft: true });
+        } else {
+          hasStartedPollingRef.current = true;
         }
         startInterval();
       } else {
@@ -558,14 +556,14 @@ const FileManager = ({
       }
     };
 
-    startInterval();
+    handleVisibilityChange();
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       stopInterval();
     };
-  }, [connectionState]);
+  }, []);
 
   const updatePath = (path) => {
     const sanitized = sanitizePath(path);

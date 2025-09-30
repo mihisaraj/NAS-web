@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Breadcrumbs from './Breadcrumbs.jsx';
 import FileList from './FileList.jsx';
 import QuickLook from './QuickLook.jsx';
@@ -37,6 +37,26 @@ const joinPath = (base, name) => {
   }
   return `${sanitizedBase}/${name}`;
 };
+
+const getParentPath = (input) => {
+  const sanitized = sanitizePath(input);
+  if (!sanitized) {
+    return '';
+  }
+  const segments = sanitized.split('/');
+  segments.pop();
+  return segments.join('/');
+};
+
+const sortItemsForDisplay = (entries) =>
+  entries
+    .slice()
+    .sort((a, b) => {
+      if (a.type === b.type) {
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      }
+      return a.type === 'directory' ? -1 : 1;
+    });
 
 const formatBytes = (bytes) => {
   if (!bytes || Number.isNaN(bytes)) {
@@ -111,6 +131,101 @@ const FileManager = ({
   const updatePathRef = useRef(() => {});
   const lastRealtimeUpdateRef = useRef(0);
   const fallbackRefreshIntervalRef = useRef(null);
+
+  const applyRealtimeUpdates = useCallback((incomingItems, normalizedCurrentPath) => {
+    if (!Array.isArray(incomingItems) || incomingItems.length === 0) {
+      return;
+    }
+
+    setItems((previousItems) => {
+      const nextItems = previousItems ? [...previousItems] : [];
+      let changed = false;
+
+      const findIndexByPath = (targetPath) =>
+        nextItems.findIndex((entry) => sanitizePath(entry.path || '') === targetPath);
+
+      const removeByPath = (targetPath) => {
+        if (!targetPath) {
+          return;
+        }
+        const index = findIndexByPath(targetPath);
+        if (index !== -1) {
+          nextItems.splice(index, 1);
+          changed = true;
+        }
+      };
+
+      incomingItems.forEach((item) => {
+        const normalizedPath = sanitizePath(item.path || '');
+        const normalizedParent = sanitizePath(item.parent || '');
+        const normalizedPreviousPath = sanitizePath(item.previousPath || '');
+        const normalizedPreviousParent = getParentPath(normalizedPreviousPath);
+
+        if (item.removed) {
+          if (
+            normalizedParent === normalizedCurrentPath ||
+            normalizedPreviousParent === normalizedCurrentPath
+          ) {
+            removeByPath(normalizedPath || normalizedPreviousPath);
+          }
+          return;
+        }
+
+        if (normalizedParent !== normalizedCurrentPath) {
+          if (normalizedPreviousParent === normalizedCurrentPath) {
+            removeByPath(normalizedPreviousPath || normalizedPath);
+          }
+          return;
+        }
+
+        if (normalizedPreviousPath && normalizedPreviousPath !== normalizedPath) {
+          removeByPath(normalizedPreviousPath);
+        }
+
+        if (!normalizedPath) {
+          return;
+        }
+
+        const existingIndex = findIndexByPath(normalizedPath);
+        const existing = existingIndex !== -1 ? nextItems[existingIndex] : null;
+
+        const merged = {
+          ...existing,
+          name: item.name || existing?.name || normalizedPath.split('/').pop() || '',
+          path: normalizedPath,
+          type: item.type || existing?.type || 'file',
+          parent: normalizedParent,
+          size: item.size ?? existing?.size ?? null,
+          modified: item.modified || existing?.modified || new Date().toISOString(),
+          isLocked:
+            typeof item.locked === 'boolean' ? item.locked : existing?.isLocked ?? false,
+        };
+
+        if (!existing) {
+          nextItems.push(merged);
+          changed = true;
+          return;
+        }
+
+        if (
+          merged.name !== existing.name ||
+          merged.type !== existing.type ||
+          merged.size !== existing.size ||
+          merged.modified !== existing.modified ||
+          merged.isLocked !== existing.isLocked
+        ) {
+          nextItems[existingIndex] = merged;
+          changed = true;
+        }
+      });
+
+      if (!changed) {
+        return previousItems;
+      }
+
+      return sortItemsForDisplay(nextItems);
+    });
+  }, []);
 
   useEffect(() => {
     setCurrentPath(startingPath);
@@ -246,13 +361,15 @@ const FileManager = ({
         : [];
       const normalizedItems = Array.isArray(data.items)
         ? data.items.map((item) => ({
-            action: data.action,
             name: item?.name || '',
             type: item?.type || 'file',
             path: sanitizePath(item?.path || ''),
             previousPath: sanitizePath(item?.previousPath || ''),
             parent: sanitizePath(item?.parent || ''),
             removed: Boolean(item?.removed),
+            locked: typeof item?.locked === 'boolean' ? item.locked : undefined,
+            size: typeof item?.size === 'number' ? item.size : undefined,
+            modified: item?.modified || '',
           }))
         : [];
 
@@ -282,6 +399,35 @@ const FileManager = ({
           }
         }
       });
+
+      const relevantItems = normalizedItems.filter((item) => {
+        if (!normalizedCurrent) {
+          return (
+            item.parent === '' ||
+            getParentPath(item.previousPath) === '' ||
+            item.path === ''
+          );
+        }
+        const previousParent = getParentPath(item.previousPath);
+        if (item.removed) {
+          return (
+            item.parent === normalizedCurrent ||
+            previousParent === normalizedCurrent ||
+            normalizedCurrent === item.path ||
+            normalizedCurrent.startsWith(`${item.path}/`)
+          );
+        }
+        return (
+          item.parent === normalizedCurrent ||
+          previousParent === normalizedCurrent ||
+          normalizedCurrent === item.path ||
+          normalizedCurrent.startsWith(`${item.path}/`)
+        );
+      });
+
+      if (relevantItems.length > 0) {
+        applyRealtimeUpdates(relevantItems, normalizedCurrent);
+      }
 
       if (typeof desiredPath === 'string') {
         const sanitizedDesired = sanitizePath(desiredPath);
@@ -349,7 +495,7 @@ const FileManager = ({
       }
       stopFallbackRefresh();
     };
-  }, []);
+  }, [applyRealtimeUpdates]);
 
   const isWithinRoot = useMemo(() => {
     if (!normalizedRoot) {
@@ -371,6 +517,47 @@ const FileManager = ({
     setRefreshToken((token) => token + 1);
   };
   refreshRef.current = refresh;
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return undefined;
+    }
+
+    let intervalId = null;
+
+    const stopInterval = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const startInterval = () => {
+      if (intervalId) {
+        return;
+      }
+      intervalId = window.setInterval(() => {
+        refreshRef.current();
+      }, 10000);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshRef.current();
+        startInterval();
+      } else {
+        stopInterval();
+      }
+    };
+
+    handleVisibilityChange();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      stopInterval();
+    };
+  }, []);
 
   const updatePath = (path) => {
     const sanitized = sanitizePath(path);

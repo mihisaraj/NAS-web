@@ -130,7 +130,9 @@ const FileManager = ({
   const refreshRef = useRef(() => {});
   const updatePathRef = useRef(() => {});
   const lastRealtimeUpdateRef = useRef(0);
-  const fallbackRefreshIntervalRef = useRef(null);
+  const softRefreshRef = useRef(false);
+  const [softRefreshing, setSoftRefreshing] = useState(false);
+  const [connectionState, setConnectionState] = useState('idle');
 
   const applyRealtimeUpdates = useCallback((incomingItems, normalizedCurrentPath) => {
     if (!Array.isArray(incomingItems) || incomingItems.length === 0) {
@@ -228,6 +230,7 @@ const FileManager = ({
   }, []);
 
   useEffect(() => {
+    softRefreshRef.current = false;
     setCurrentPath(startingPath);
   }, [startingPath]);
 
@@ -237,7 +240,14 @@ const FileManager = ({
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
+    const useSoftRefresh = softRefreshRef.current;
+    if (useSoftRefresh) {
+      setSoftRefreshing(true);
+    } else {
+      setSoftRefreshing(false);
+      setLoading(true);
+    }
+    softRefreshRef.current = false;
     setError('');
 
     listItems(currentPath)
@@ -261,7 +271,11 @@ const FileManager = ({
       })
       .finally(() => {
         if (active) {
-          setLoading(false);
+          if (useSoftRefresh) {
+            setSoftRefreshing(false);
+          } else {
+            setLoading(false);
+          }
         }
       });
 
@@ -333,24 +347,7 @@ const FileManager = ({
         return;
       }
       lastRealtimeUpdateRef.current = now;
-      refreshRef.current();
-    };
-
-    const stopFallbackRefresh = () => {
-      if (fallbackRefreshIntervalRef.current) {
-        clearInterval(fallbackRefreshIntervalRef.current);
-        fallbackRefreshIntervalRef.current = null;
-      }
-    };
-
-    const scheduleFallbackRefresh = (intervalMs = 10000) => {
-      if (fallbackRefreshIntervalRef.current) {
-        return;
-      }
-      const delay = Math.max(3000, intervalMs);
-      fallbackRefreshIntervalRef.current = setInterval(() => {
-        requestRefresh();
-      }, delay);
+      refreshRef.current({ soft: true });
     };
 
     const handleItemsEvent = (event) => {
@@ -467,14 +464,12 @@ const FileManager = ({
       }
 
       if (event.type === 'connection') {
-        const state = event.data?.state;
+        const state = event.data?.state || 'unknown';
+        setConnectionState(state);
         if (state === 'open') {
           lastRealtimeUpdateRef.current = Date.now();
-          stopFallbackRefresh();
-        } else if (state === 'error') {
-          scheduleFallbackRefresh(6000);
-        } else if (state === 'closed') {
-          scheduleFallbackRefresh(10000);
+        } else if (state === 'error' || state === 'closed') {
+          requestRefresh();
         }
         return;
       }
@@ -493,7 +488,6 @@ const FileManager = ({
       if (typeof unsubscribe === 'function') {
         unsubscribe();
       }
-      stopFallbackRefresh();
     };
   }, [applyRealtimeUpdates]);
 
@@ -513,13 +507,25 @@ const FileManager = ({
     };
   }, [normalizedRoot]);
 
-  const refresh = () => {
+  const triggerRefresh = useCallback((options = {}) => {
+    const { soft = true } = options;
+    if (soft) {
+      softRefreshRef.current = true;
+    }
     setRefreshToken((token) => token + 1);
+  }, []);
+
+  const refresh = (options) => {
+    triggerRefresh(options);
   };
-  refreshRef.current = refresh;
+  refreshRef.current = triggerRefresh;
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return undefined;
+    }
+
+    if (connectionState === 'open') {
       return undefined;
     }
 
@@ -533,31 +539,33 @@ const FileManager = ({
     };
 
     const startInterval = () => {
-      if (intervalId) {
+      if (intervalId || document.visibilityState !== 'visible') {
         return;
       }
       intervalId = window.setInterval(() => {
-        refreshRef.current();
-      }, 10000);
+        refreshRef.current({ soft: true });
+      }, 30000);
     };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        refreshRef.current();
+        if (connectionState !== 'open') {
+          refreshRef.current({ soft: true });
+        }
         startInterval();
       } else {
         stopInterval();
       }
     };
 
-    handleVisibilityChange();
+    startInterval();
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       stopInterval();
     };
-  }, []);
+  }, [connectionState]);
 
   const updatePath = (path) => {
     const sanitized = sanitizePath(path);
@@ -566,6 +574,7 @@ const FileManager = ({
       return;
     }
     setError('');
+    softRefreshRef.current = false;
     setCurrentPath(sanitized);
   };
   updatePathRef.current = updatePath;
@@ -953,6 +962,10 @@ const FileManager = ({
     }
   };
 
+  const handleToolbarRefresh = () => {
+    refresh({ soft: true });
+  };
+
   const canQuickLook = allowQuickLook && selectedItem?.type === 'file';
   const quickLookDownloadHandler = quickLook.item ? () => handleDownload(quickLook.item) : undefined;
 
@@ -982,7 +995,7 @@ const FileManager = ({
           currentPath={currentPath}
           onCreateFolder={handleCreateFolder}
           onUpload={handleUpload}
-          onRefresh={refresh}
+          onRefresh={handleToolbarRefresh}
           onNavigateUp={handleNavigateUp}
           canNavigateUp={canNavigateUp}
           onQuickLook={() => handleQuickLook()}
@@ -993,6 +1006,7 @@ const FileManager = ({
           allowUpload={allowUpload}
           allowQuickLook={allowQuickLook}
           allowViewToggle={allowViewToggle}
+          isRefreshing={softRefreshing}
           uploadState={uploadState}
         />
 

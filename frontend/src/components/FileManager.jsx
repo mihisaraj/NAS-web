@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import useDialog from './dialog/useDialog.js';
 import Breadcrumbs from './Breadcrumbs.jsx';
 import FileList from './FileList.jsx';
 import QuickLook from './QuickLook.jsx';
@@ -99,6 +100,7 @@ const FileManager = ({
   allowViewToggle = true,
   passwordLookup,
 }) => {
+  const dialog = useDialog();
   const normalizedRoot = useMemo(() => sanitizePath(rootPath), [rootPath]);
   const normalizedInitial = useMemo(() => sanitizePath(initialPath), [initialPath]);
   const startingPath = normalizedInitial || normalizedRoot || '';
@@ -486,9 +488,12 @@ const FileManager = ({
       const stored = getStoredPassword(sourcePath);
       password = stored;
       if (!password) {
-        const input = window.prompt(
-          `Enter the password to ${mode === 'copy' ? 'copy' : 'move'} this locked item`
-        );
+        const input = await dialog.prompt({
+          title: 'Password required',
+          message: `Enter the password to ${mode === 'copy' ? 'copy' : 'move'} this locked item.`,
+          placeholder: 'Enter password',
+          inputType: 'password',
+        });
         if (!input) {
           setMessage(`${mode === 'copy' ? 'Copy' : 'Move'} cancelled`);
           return false;
@@ -648,7 +653,11 @@ const FileManager = ({
     if (!allowCreate) {
       return;
     }
-    const name = window.prompt('Folder name');
+    const name = await dialog.prompt({
+      title: 'Create folder',
+      message: 'Enter a name for the new folder.',
+      placeholder: 'Folder name',
+    });
     if (!name) {
       return;
     }
@@ -743,9 +752,12 @@ const FileManager = ({
     if (!allowDelete) {
       return;
     }
-    const confirmed = window.confirm(
-      `Delete ${item.type === 'directory' ? 'folder' : 'file'} “${item.name}”?`
-    );
+    const confirmed = await dialog.confirm({
+      title: 'Delete item',
+      message: `Delete ${item.type === 'directory' ? 'folder' : 'file'} “${item.name}”?`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
     if (!confirmed) {
       return;
     }
@@ -753,7 +765,12 @@ const FileManager = ({
     if (item.isLocked) {
       password = getStoredPassword(item.path || joinPath(currentPath, item.name));
       if (!password) {
-        password = window.prompt('Enter the password to delete this locked item');
+        password = await dialog.prompt({
+          title: 'Password required',
+          message: 'Enter the password to delete this locked item.',
+          placeholder: 'Enter password',
+          inputType: 'password',
+        });
       }
       if (!password) {
         setMessage('Deletion cancelled');
@@ -771,7 +788,12 @@ const FileManager = ({
     if (!allowRename) {
       return;
     }
-    const newName = window.prompt('Enter the new name', item.name);
+    const newName = await dialog.prompt({
+      title: 'Rename item',
+      message: 'Enter a new name for the selected item.',
+      placeholder: 'New name',
+      defaultValue: item.name,
+    });
     if (!newName) {
       return;
     }
@@ -788,7 +810,12 @@ const FileManager = ({
     if (item.isLocked) {
       password = getStoredPassword(item.path || joinPath(currentPath, item.name));
       if (!password) {
-        password = window.prompt('Enter the password to rename this locked item');
+        password = await dialog.prompt({
+          title: 'Password required',
+          message: 'Enter the password to rename this locked item.',
+          placeholder: 'Enter password',
+          inputType: 'password',
+        });
       }
       if (!password) {
         setMessage('Rename cancelled');
@@ -809,7 +836,14 @@ const FileManager = ({
     const targetPath = item.path || joinPath(currentPath, item.name);
     if (item.isLocked) {
       const stored = getStoredPassword(targetPath);
-      const password = stored || window.prompt('Enter the password to unlock this item');
+      const password =
+        stored ||
+        (await dialog.prompt({
+          title: 'Password required',
+          message: 'Enter the password to unlock this item.',
+          placeholder: 'Enter password',
+          inputType: 'password',
+        }));
       if (!password) {
         setMessage('Unlock cancelled');
         return;
@@ -821,7 +855,12 @@ const FileManager = ({
       return;
     }
 
-    const password = window.prompt('Set a password to lock this item');
+    const password = await dialog.prompt({
+      title: 'Lock item',
+      message: 'Set a password to lock this item.',
+      placeholder: 'Create password',
+      inputType: 'password',
+    });
     if (!password) {
       setMessage('Lock cancelled');
       return;
@@ -857,7 +896,12 @@ const FileManager = ({
     if (item.isLocked) {
       password = getStoredPassword(item.path || joinPath(currentPath, item.name));
       if (!password) {
-        const input = window.prompt('Enter the password to preview this locked file');
+        const input = await dialog.prompt({
+          title: 'Password required',
+          message: 'Enter the password to preview this locked file.',
+          placeholder: 'Enter password',
+          inputType: 'password',
+        });
         if (!input) {
           setMessage('Preview cancelled');
           return;
@@ -926,7 +970,12 @@ const FileManager = ({
     if (item.isLocked) {
       password = getStoredPassword(item.path || joinPath(currentPath, item.name));
       if (!password) {
-        const input = window.prompt('Enter the password to download this locked file');
+        const input = await dialog.prompt({
+          title: 'Password required',
+          message: 'Enter the password to download this locked file.',
+          placeholder: 'Enter password',
+          inputType: 'password',
+        });
         if (!input) {
           setMessage('Download cancelled');
           return;

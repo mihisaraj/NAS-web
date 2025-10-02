@@ -11,12 +11,8 @@ function resolveBaseUrl() {
   }
 
   try {
-    const isSupported = eval('typeof ' + 'import.meta' + ' !== "undefined"');
-    if (isSupported) {
-      const env = eval('(' + 'import.meta' + '.env)');
-      if (typeof env.VITE_API_URL !== "undefined") {
-        return env.VITE_API_URL;
-      }
+    if (typeof import.meta !== 'undefined' && import.meta?.env?.VITE_API_URL) {
+      return import.meta.env.VITE_API_URL;
     }
   } catch (error) {
     // ignore – import.meta is not available in all runtimes
@@ -504,6 +500,13 @@ export function logout() {
 
 export function getCurrentUser() {
   return request('/auth/me');
+}
+
+export function updateMyProfile(body) {
+  return request('/users/me/profile', {
+    method: 'PUT',
+    body,
+  });
 }
 
 export function changeMyPassword(currentPassword, newPassword) {

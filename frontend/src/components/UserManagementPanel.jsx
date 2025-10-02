@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import useDialog from './dialog/useDialog.js';
 import { fetchUsers, createUser, updateUser, deleteUser } from '../services/api.js';
 
 const normalizePath = (input) => {
@@ -31,6 +32,7 @@ const initialNewUser = {
 };
 
 const UserManagementPanel = ({ onUsersChanged }) => {
+  const dialog = useDialog();
   const [users, setUsers] = useState([]);
   const [selectedUsername, setSelectedUsername] = useState('');
   const [accessDraft, setAccessDraft] = useState([]);
@@ -155,7 +157,12 @@ const UserManagementPanel = ({ onUsersChanged }) => {
     }
     setError('');
     setMessage('');
-    const password = window.prompt(`Enter a new password for ${selectedUser.username}`);
+    const password = await dialog.prompt({
+      title: 'Reset password',
+      message: `Enter a new password for ${selectedUser.username}.`,
+      placeholder: 'New password',
+      inputType: 'password',
+    });
     if (!password) {
       setMessage('Password update cancelled.');
       return;
@@ -183,7 +190,12 @@ const UserManagementPanel = ({ onUsersChanged }) => {
     }
     setError('');
     setMessage('');
-    const confirmed = window.confirm(`Remove user “${selectedUser.username}”?`);
+    const confirmed = await dialog.confirm({
+      title: 'Remove user',
+      message: `Remove user “${selectedUser.username}”?`,
+      confirmLabel: 'Remove user',
+      destructive: true,
+    });
     if (!confirmed) {
       return;
     }

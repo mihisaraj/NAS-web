@@ -81,7 +81,7 @@ const LoginForm = ({ onSubmit, error }) => {
           Sign In
         </button>
         <p className="rounded-2xl border border-white/20 bg-white/30 px-4 py-3 text-sm font-medium text-slate-600 shadow-inner shadow-white/20">
-          Try the default admin account: <strong className="font-semibold text-slate-900">Admin / HTS</strong>
+          
         </p>
       </div>
     </form>

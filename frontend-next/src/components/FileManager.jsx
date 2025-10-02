@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Breadcrumbs from './Breadcrumbs.jsx';
 import FileList from './FileList.jsx';
 import QuickLook from './QuickLook.jsx';
@@ -9,6 +9,8 @@ import {
   uploadFiles,
   deleteItem,
   renameItem,
+  copyItem,
+  moveItem,
   lockItem,
   unlockItem,
   fetchFileContent,
@@ -37,26 +39,6 @@ const joinPath = (base, name) => {
   }
   return `${sanitizedBase}/${name}`;
 };
-
-const getParentPath = (input) => {
-  const sanitized = sanitizePath(input);
-  if (!sanitized) {
-    return '';
-  }
-  const segments = sanitized.split('/');
-  segments.pop();
-  return segments.join('/');
-};
-
-const sortItemsForDisplay = (entries) =>
-  entries
-    .slice()
-    .sort((a, b) => {
-      if (a.type === b.type) {
-        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-      }
-      return a.type === 'directory' ? -1 : 1;
-    });
 
 const formatBytes = (bytes) => {
   if (!bytes || Number.isNaN(bytes)) {
@@ -88,6 +70,19 @@ const initialQuickLookState = {
   mimeType: '',
   textContent: '',
   item: null,
+};
+
+const initialClipboardState = {
+  mode: '',
+  item: null,
+  sourcePath: '',
+  sourceParent: '',
+};
+
+const initialDragState = {
+  item: null,
+  sourcePath: '',
+  sourceParent: '',
 };
 
 const FileManager = ({
@@ -124,113 +119,21 @@ const FileManager = ({
   const [selectedItem, setSelectedItem] = useState(null);
   const [uploadState, setUploadState] = useState(initialUploadState);
   const [quickLook, setQuickLook] = useState(initialQuickLookState);
+  const [clipboard, setClipboard] = useState(initialClipboardState);
+  const [dragState, setDragState] = useState(initialDragState);
   const previewUrlRef = useRef('');
   const uploadResetTimeoutRef = useRef(null);
   const currentPathRef = useRef(currentPath);
   const refreshRef = useRef(() => {});
   const updatePathRef = useRef(() => {});
-  const lastRealtimeUpdateRef = useRef(0);
-  const softRefreshRef = useRef(false);
-  const hasStartedPollingRef = useRef(false);
-  const [softRefreshing, setSoftRefreshing] = useState(false);
-
-  const applyRealtimeUpdates = useCallback((incomingItems, normalizedCurrentPath) => {
-    if (!Array.isArray(incomingItems) || incomingItems.length === 0) {
-      return;
-    }
-
-    setItems((previousItems) => {
-      const nextItems = previousItems ? [...previousItems] : [];
-      let changed = false;
-
-      const findIndexByPath = (targetPath) =>
-        nextItems.findIndex((entry) => sanitizePath(entry.path || '') === targetPath);
-
-      const removeByPath = (targetPath) => {
-        if (!targetPath) {
-          return;
-        }
-        const index = findIndexByPath(targetPath);
-        if (index !== -1) {
-          nextItems.splice(index, 1);
-          changed = true;
-        }
-      };
-
-      incomingItems.forEach((item) => {
-        const normalizedPath = sanitizePath(item.path || '');
-        const normalizedParent = sanitizePath(item.parent || '');
-        const normalizedPreviousPath = sanitizePath(item.previousPath || '');
-        const normalizedPreviousParent = getParentPath(normalizedPreviousPath);
-
-        if (item.removed) {
-          if (
-            normalizedParent === normalizedCurrentPath ||
-            normalizedPreviousParent === normalizedCurrentPath
-          ) {
-            removeByPath(normalizedPath || normalizedPreviousPath);
-          }
-          return;
-        }
-
-        if (normalizedParent !== normalizedCurrentPath) {
-          if (normalizedPreviousParent === normalizedCurrentPath) {
-            removeByPath(normalizedPreviousPath || normalizedPath);
-          }
-          return;
-        }
-
-        if (normalizedPreviousPath && normalizedPreviousPath !== normalizedPath) {
-          removeByPath(normalizedPreviousPath);
-        }
-
-        if (!normalizedPath) {
-          return;
-        }
-
-        const existingIndex = findIndexByPath(normalizedPath);
-        const existing = existingIndex !== -1 ? nextItems[existingIndex] : null;
-
-        const merged = {
-          ...existing,
-          name: item.name || existing?.name || normalizedPath.split('/').pop() || '',
-          path: normalizedPath,
-          type: item.type || existing?.type || 'file',
-          parent: normalizedParent,
-          size: item.size ?? existing?.size ?? null,
-          modified: item.modified || existing?.modified || new Date().toISOString(),
-          isLocked:
-            typeof item.locked === 'boolean' ? item.locked : existing?.isLocked ?? false,
-        };
-
-        if (!existing) {
-          nextItems.push(merged);
-          changed = true;
-          return;
-        }
-
-        if (
-          merged.name !== existing.name ||
-          merged.type !== existing.type ||
-          merged.size !== existing.size ||
-          merged.modified !== existing.modified ||
-          merged.isLocked !== existing.isLocked
-        ) {
-          nextItems[existingIndex] = merged;
-          changed = true;
-        }
-      });
-
-      if (!changed) {
-        return previousItems;
-      }
-
-      return sortItemsForDisplay(nextItems);
-    });
-  }, []);
+  const clipboardRef = useRef(initialClipboardState);
+  const keyHandlerRef = useRef({
+    copy: () => {},
+    cut: () => {},
+    paste: () => {},
+  });
 
   useEffect(() => {
-    softRefreshRef.current = false;
     setCurrentPath(startingPath);
   }, [startingPath]);
 
@@ -240,14 +143,7 @@ const FileManager = ({
 
   useEffect(() => {
     let active = true;
-    const useSoftRefresh = softRefreshRef.current;
-    if (useSoftRefresh) {
-      setSoftRefreshing(true);
-    } else {
-      setSoftRefreshing(false);
-      setLoading(true);
-    }
-    softRefreshRef.current = false;
+    setLoading(true);
     setError('');
 
     listItems(currentPath)
@@ -271,11 +167,7 @@ const FileManager = ({
       })
       .finally(() => {
         if (active) {
-          if (useSoftRefresh) {
-            setSoftRefreshing(false);
-          } else {
-            setLoading(false);
-          }
+          setLoading(false);
         }
       });
 
@@ -303,11 +195,30 @@ const FileManager = ({
   }, [currentPath]);
 
   useEffect(() => {
+    clipboardRef.current = clipboard;
+  }, [clipboard]);
+
+  useEffect(() => {
     setSelectedItem((current) => {
       if (!current) {
         return current;
       }
       return items.find((item) => item.path === current.path) || null;
+    });
+  }, [items]);
+
+  useEffect(() => {
+    setClipboard((current) => {
+      if (!current?.item) {
+        return current;
+      }
+      if (current.mode === 'move') {
+        const exists = items.some((item) => item.path === current.sourcePath);
+        if (!exists) {
+          return initialClipboardState;
+        }
+      }
+      return current;
     });
   }, [items]);
 
@@ -339,34 +250,25 @@ const FileManager = ({
   }, [items, quickLook.open, quickLook.item]);
 
   useEffect(() => {
-    const MIN_REALTIME_REFRESH_INTERVAL = 600;
-
-    const requestRefresh = () => {
-      const now = Date.now();
-      if (now - lastRealtimeUpdateRef.current < MIN_REALTIME_REFRESH_INTERVAL) {
+    const unsubscribe = subscribeToEvents((event) => {
+      if (!event || event.type !== 'items') {
         return;
       }
-      lastRealtimeUpdateRef.current = now;
-      refreshRef.current({ soft: true });
-    };
 
-    const handleItemsEvent = (event) => {
-      const data = event?.data || {};
+      const data = event.data || {};
       const normalizedCurrent = sanitizePath(currentPathRef.current || '');
       const normalizedPaths = Array.isArray(data.paths)
         ? data.paths.map((value) => sanitizePath(value || ''))
         : [];
       const normalizedItems = Array.isArray(data.items)
         ? data.items.map((item) => ({
+            action: data.action,
             name: item?.name || '',
             type: item?.type || 'file',
             path: sanitizePath(item?.path || ''),
             previousPath: sanitizePath(item?.previousPath || ''),
             parent: sanitizePath(item?.parent || ''),
             removed: Boolean(item?.removed),
-            locked: typeof item?.locked === 'boolean' ? item.locked : undefined,
-            size: typeof item?.size === 'number' ? item.size : undefined,
-            modified: item?.modified || '',
           }))
         : [];
 
@@ -382,7 +284,7 @@ const FileManager = ({
         }
 
         if (
-          data.action === 'item-renamed' &&
+          (data.action === 'item-renamed' || data.action === 'item-moved') &&
           item.previousPath &&
           item.path &&
           normalizedCurrent &&
@@ -397,35 +299,6 @@ const FileManager = ({
         }
       });
 
-      const relevantItems = normalizedItems.filter((item) => {
-        if (!normalizedCurrent) {
-          return (
-            item.parent === '' ||
-            getParentPath(item.previousPath) === '' ||
-            item.path === ''
-          );
-        }
-        const previousParent = getParentPath(item.previousPath);
-        if (item.removed) {
-          return (
-            item.parent === normalizedCurrent ||
-            previousParent === normalizedCurrent ||
-            normalizedCurrent === item.path ||
-            normalizedCurrent.startsWith(`${item.path}/`)
-          );
-        }
-        return (
-          item.parent === normalizedCurrent ||
-          previousParent === normalizedCurrent ||
-          normalizedCurrent === item.path ||
-          normalizedCurrent.startsWith(`${item.path}/`)
-        );
-      });
-
-      if (relevantItems.length > 0) {
-        applyRealtimeUpdates(relevantItems, normalizedCurrent);
-      }
-
       if (typeof desiredPath === 'string') {
         const sanitizedDesired = sanitizePath(desiredPath);
         if (sanitizedDesired !== normalizedCurrent) {
@@ -433,7 +306,7 @@ const FileManager = ({
           return;
         }
         if (sanitizedDesired === normalizedCurrent) {
-          requestRefresh();
+          refreshRef.current();
           return;
         }
       }
@@ -454,32 +327,7 @@ const FileManager = ({
         });
 
       if (shouldRefresh) {
-        requestRefresh();
-      }
-    };
-
-    const unsubscribe = subscribeToEvents((event) => {
-      if (!event) {
-        return;
-      }
-
-      if (event.type === 'connection') {
-        const state = event.data?.state || 'unknown';
-        if (state === 'open') {
-          lastRealtimeUpdateRef.current = Date.now();
-        } else if (state === 'error' || state === 'closed') {
-          requestRefresh();
-        }
-        return;
-      }
-
-      if (event.type === 'items' || event.type === 'message') {
-        handleItemsEvent(event);
-        return;
-      }
-
-      if (event.data && (Array.isArray(event.data.paths) || Array.isArray(event.data.items))) {
-        handleItemsEvent(event);
+        refreshRef.current();
       }
     });
 
@@ -488,7 +336,7 @@ const FileManager = ({
         unsubscribe();
       }
     };
-  }, [applyRealtimeUpdates]);
+  }, []);
 
   const isWithinRoot = useMemo(() => {
     if (!normalizedRoot) {
@@ -506,64 +354,10 @@ const FileManager = ({
     };
   }, [normalizedRoot]);
 
-  const triggerRefresh = useCallback((options = {}) => {
-    const { soft = true } = options;
-    if (soft) {
-      softRefreshRef.current = true;
-    }
+  const refresh = () => {
     setRefreshToken((token) => token + 1);
-  }, []);
-
-  const refresh = (options) => {
-    triggerRefresh(options);
   };
-  refreshRef.current = triggerRefresh;
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') {
-      return undefined;
-    }
-
-    const POLL_INTERVAL_MS = 30000;
-    let intervalId = null;
-
-    const stopInterval = () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
-    };
-
-    const startInterval = () => {
-      if (intervalId || document.visibilityState !== 'visible') {
-        return;
-      }
-      intervalId = window.setInterval(() => {
-        refreshRef.current({ soft: true });
-      }, POLL_INTERVAL_MS);
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        if (hasStartedPollingRef.current) {
-          refreshRef.current({ soft: true });
-        } else {
-          hasStartedPollingRef.current = true;
-        }
-        startInterval();
-      } else {
-        stopInterval();
-      }
-    };
-
-    handleVisibilityChange();
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      stopInterval();
-    };
-  }, []);
+  refreshRef.current = refresh;
 
   const updatePath = (path) => {
     const sanitized = sanitizePath(path);
@@ -572,7 +366,6 @@ const FileManager = ({
       return;
     }
     setError('');
-    softRefreshRef.current = false;
     setCurrentPath(sanitized);
   };
   updatePathRef.current = updatePath;
@@ -646,6 +439,211 @@ const FileManager = ({
     return passwordLookup(sanitized);
   };
 
+  const resolveItemPath = (item, fallbackBase = currentPath) => {
+    if (!item) {
+      return '';
+    }
+    const rawPath = item.path || joinPath(fallbackBase, item.name);
+    return sanitizePath(rawPath);
+  };
+
+  const transferItem = async (item, destinationPath, { mode, newName } = {}) => {
+    if (!item || !mode) {
+      return false;
+    }
+    const sanitizedDestination = sanitizePath(destinationPath);
+    if (!isWithinRoot(sanitizedDestination)) {
+      setError('You can only modify items within your assigned folder.');
+      return false;
+    }
+
+    const sourcePath = resolveItemPath(item);
+    if (!sourcePath) {
+      setError('Unable to determine the selected item path.');
+      return false;
+    }
+
+    const sourceParent = sanitizePath(sourcePath.split('/').slice(0, -1).join('/'));
+
+    if (mode === 'move') {
+      if (!allowRename) {
+        setError('You do not have permission to move items.');
+        return false;
+      }
+      if (sourceParent === sanitizedDestination) {
+        setMessage('Item is already in this folder');
+        return false;
+      }
+    } else if (mode === 'copy') {
+      if (!(allowUpload || allowCreate)) {
+        setError('You do not have permission to copy items here.');
+        return false;
+      }
+    }
+
+    let password;
+    if (item.isLocked) {
+      const stored = getStoredPassword(sourcePath);
+      password = stored;
+      if (!password) {
+        const input = window.prompt(
+          `Enter the password to ${mode === 'copy' ? 'copy' : 'move'} this locked item`
+        );
+        if (!input) {
+          setMessage(`${mode === 'copy' ? 'Copy' : 'Move'} cancelled`);
+          return false;
+        }
+        password = input;
+      }
+    }
+
+    const locationLabel = sanitizedDestination === currentPath ? '' : ` to “${sanitizedDestination || 'Home'}”`;
+    const successMessage =
+      mode === 'copy'
+        ? `Copied “${item.name}”${locationLabel}`
+        : `Moved “${item.name}”${locationLabel}`;
+
+    const action =
+      mode === 'copy'
+        ? () => copyItem(sourcePath, sanitizedDestination, { newName: newName || item.name, password })
+        : () => moveItem(sourcePath, sanitizedDestination, { newName: newName || item.name, password });
+
+    return performAction(action, successMessage);
+  };
+
+  const handleCopyItem = (itemParam) => {
+    const item = itemParam || selectedItem;
+    if (!item) {
+      setError('Select an item to copy.');
+      return;
+    }
+    const sourcePath = resolveItemPath(item);
+    if (!sourcePath) {
+      setError('Unable to copy this item.');
+      return;
+    }
+    const sourceParent = sanitizePath(sourcePath.split('/').slice(0, -1).join('/'));
+    setClipboard({
+      mode: 'copy',
+      item,
+      sourcePath,
+      sourceParent,
+    });
+    setMessage(`Copied “${item.name}”. Navigate to a folder and paste.`);
+  };
+
+  const handleCutItem = (itemParam) => {
+    if (!allowRename) {
+      setError('You do not have permission to move items.');
+      return;
+    }
+    const item = itemParam || selectedItem;
+    if (!item) {
+      setError('Select an item to move.');
+      return;
+    }
+    const sourcePath = resolveItemPath(item);
+    if (!sourcePath) {
+      setError('Unable to move this item.');
+      return;
+    }
+    const sourceParent = sanitizePath(sourcePath.split('/').slice(0, -1).join('/'));
+    setClipboard({
+      mode: 'move',
+      item,
+      sourcePath,
+      sourceParent,
+    });
+    setMessage(`Ready to move “${item.name}”. Choose a destination and paste.`);
+  };
+
+  const handleClearClipboard = () => {
+    setClipboard(initialClipboardState);
+  };
+
+  const handlePasteClipboard = async (targetPath) => {
+    const currentClipboard = clipboardRef.current || clipboard;
+    if (!currentClipboard.item || !currentClipboard.mode) {
+      setError('Clipboard is empty.');
+      return;
+    }
+
+    const destination =
+      typeof targetPath === 'string'
+        ? targetPath
+        : selectedItem?.type === 'directory'
+        ? selectedItem.path
+        : currentPath;
+
+    const success = await transferItem(currentClipboard.item, destination, {
+      mode: currentClipboard.mode,
+      newName: currentClipboard.item.name,
+    });
+
+    if (success && currentClipboard.mode === 'move') {
+      handleClearClipboard();
+    }
+  };
+
+  const handleDragStartItem = (item) => {
+    const sourcePath = resolveItemPath(item);
+    const sourceParent = sanitizePath(sourcePath.split('/').slice(0, -1).join('/'));
+    setDragState({
+      item,
+      sourcePath,
+      sourceParent,
+    });
+  };
+
+  const handleDragEndItem = () => {
+    setDragState(initialDragState);
+  };
+
+  const handleDropOnItem = async (targetItem, { copy = false } = {}) => {
+    if (!targetItem || targetItem.type !== 'directory' || !dragState.item) {
+      handleDragEndItem();
+      return;
+    }
+    const destination = resolveItemPath(targetItem);
+    const shouldCopy =
+      copy || (!allowRename && (allowUpload || allowCreate));
+    const mode = shouldCopy ? 'copy' : 'move';
+    const success = await transferItem(dragState.item, destination, {
+      mode,
+      newName: dragState.item.name,
+    });
+    if (success && mode === 'move') {
+      handleClearClipboard();
+    }
+    handleDragEndItem();
+  };
+
+  const handleDropToCurrent = async ({ copy = false } = {}) => {
+    if (!dragState.item) {
+      handleDragEndItem();
+      return;
+    }
+    const shouldCopy =
+      copy || (!allowRename && (allowUpload || allowCreate));
+    const mode = shouldCopy ? 'copy' : 'move';
+    const success = await transferItem(dragState.item, currentPath, {
+      mode,
+      newName: dragState.item.name,
+    });
+    if (success && mode === 'move') {
+      handleClearClipboard();
+    }
+    handleDragEndItem();
+  };
+
+  const handleDropFiles = (files, targetItem) => {
+    if (!allowUpload) {
+      return;
+    }
+    const destination = targetItem?.type === 'directory' ? targetItem.path : currentPath;
+    handleUpload(files, destination);
+  };
+
   const handleCreateFolder = async () => {
     if (!allowCreate) {
       return;
@@ -665,11 +663,16 @@ const FileManager = ({
     );
   };
 
-  const handleUpload = async (files) => {
+  const handleUpload = async (files, targetPath = currentPath) => {
     if (!allowUpload) {
       return;
     }
     if (!files || files.length === 0) {
+      return;
+    }
+    const sanitizedTarget = sanitizePath(targetPath);
+    if (!isWithinRoot(sanitizedTarget)) {
+      setError('You can only upload within your assigned folder.');
       return;
     }
     if (uploadResetTimeoutRef.current) {
@@ -689,7 +692,7 @@ const FileManager = ({
 
     const success = await performAction(
       () =>
-        uploadFiles(currentPath, fileArray, {
+        uploadFiles(sanitizedTarget, fileArray, {
           onProgress: ({ loaded, total, percent }) => {
             setUploadState((current) => {
               if (!current.active) {
@@ -706,7 +709,12 @@ const FileManager = ({
             });
           },
         }),
-      fileArray.length === 1 ? `Uploaded “${fileArray[0].name}”` : `Uploaded ${fileArray.length} files`
+      (() => {
+        const locationLabel = sanitizedTarget === currentPath ? '' : ` to “${sanitizedTarget || 'Home'}”`;
+        return fileArray.length === 1
+          ? `Uploaded “${fileArray[0].name}”${locationLabel}`
+          : `Uploaded ${fileArray.length} files${locationLabel}`;
+      })()
     );
 
     if (success) {
@@ -950,6 +958,62 @@ const FileManager = ({
     }
   };
 
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+      const target = event.target;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable ||
+          target.getAttribute?.('role') === 'textbox')
+      ) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      const hasMeta = event.metaKey || event.ctrlKey;
+
+      if (hasMeta && key === 'c') {
+        event.preventDefault();
+        handleCopyItem();
+        return;
+      }
+      if (hasMeta && key === 'x') {
+        event.preventDefault();
+        handleCutItem();
+        return;
+      }
+      if (hasMeta && key === 'v') {
+        event.preventDefault();
+        handlePasteClipboard();
+        return;
+      }
+      if (key === 'delete' || key === 'backspace') {
+        if (selectedItem) {
+          event.preventDefault();
+          handleDelete(selectedItem);
+        }
+        return;
+      }
+      if (key === 'enter' && selectedItem) {
+        event.preventDefault();
+        handleOpen(selectedItem);
+        return;
+      }
+      if (key === ' ' && selectedItem?.type === 'file' && allowQuickLook) {
+        event.preventDefault();
+        handleQuickLook(selectedItem);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedItem, allowQuickLook, handleCopyItem, handleCutItem, handlePasteClipboard, handleDelete, handleOpen, handleQuickLook]);
+
   const handleOpenPreviewInNewTab = () => {
     if (!quickLook.url) {
       return;
@@ -960,12 +1024,17 @@ const FileManager = ({
     }
   };
 
-  const handleToolbarRefresh = () => {
-    refresh({ soft: true });
-  };
-
   const canQuickLook = allowQuickLook && selectedItem?.type === 'file';
   const quickLookDownloadHandler = quickLook.item ? () => handleDownload(quickLook.item) : undefined;
+  const canHandleInternalDrops = allowRename || allowUpload || allowCreate;
+  const canCopySelected = Boolean(selectedItem);
+  const canCutSelected = Boolean(selectedItem) && allowRename;
+  const canPasteFromClipboard = Boolean(
+    clipboard.item && clipboard.mode && (clipboard.mode === 'copy' ? allowUpload || allowCreate : allowRename)
+  );
+  const clipboardLabel = clipboard.item
+    ? `${clipboard.mode === 'copy' ? 'Copying' : 'Moving'} “${clipboard.item.name}”`
+    : '';
 
   return (
     <div className="glass-panel relative flex h-full flex-col gap-6 overflow-hidden p-5">
@@ -993,7 +1062,7 @@ const FileManager = ({
           currentPath={currentPath}
           onCreateFolder={handleCreateFolder}
           onUpload={handleUpload}
-          onRefresh={handleToolbarRefresh}
+          onRefresh={refresh}
           onNavigateUp={handleNavigateUp}
           canNavigateUp={canNavigateUp}
           onQuickLook={() => handleQuickLook()}
@@ -1004,8 +1073,14 @@ const FileManager = ({
           allowUpload={allowUpload}
           allowQuickLook={allowQuickLook}
           allowViewToggle={allowViewToggle}
-          isRefreshing={softRefreshing}
           uploadState={uploadState}
+          onCopy={handleCopyItem}
+          onCut={allowRename ? handleCutItem : undefined}
+          onPaste={() => handlePasteClipboard()}
+          canCopy={canCopySelected}
+          canCut={canCutSelected}
+          canPaste={canPasteFromClipboard}
+          clipboardLabel={clipboardLabel}
         />
 
         <Breadcrumbs breadcrumbs={breadcrumbs} onNavigate={handleNavigate} />
@@ -1071,6 +1146,13 @@ const FileManager = ({
             allowDelete={allowDelete}
             allowLockToggle={allowLockToggle}
             allowQuickLook={allowQuickLook}
+            onCopyItem={handleCopyItem}
+            onCutItem={allowRename ? handleCutItem : undefined}
+            onDragStart={canHandleInternalDrops ? handleDragStartItem : undefined}
+            onDragEnd={canHandleInternalDrops ? handleDragEndItem : undefined}
+            onDropItem={canHandleInternalDrops ? handleDropOnItem : undefined}
+            onDropToCurrent={canHandleInternalDrops ? handleDropToCurrent : undefined}
+            onDropFiles={allowUpload ? handleDropFiles : undefined}
           />
         )}
       </div>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { fetchUsers, createUser, updateUser, deleteUser } from '../services/api.js';
 
 const normalizePath = (input) => {
@@ -41,13 +41,8 @@ const UserManagementPanel = ({ onUsersChanged }) => {
   const [newUser, setNewUser] = useState(initialNewUser);
   const [savingAccess, setSavingAccess] = useState(false);
   const [updatingUser, setUpdatingUser] = useState(false);
-  const selectedUsernameRef = useRef(selectedUsername);
 
-  useEffect(() => {
-    selectedUsernameRef.current = selectedUsername;
-  }, [selectedUsername]);
-
-  const loadUsers = useCallback(async () => {
+  const loadUsers = async () => {
     setLoading(true);
     setError('');
     try {
@@ -59,7 +54,7 @@ const UserManagementPanel = ({ onUsersChanged }) => {
         setAccessDraft([]);
         return;
       }
-      const existing = sorted.find((user) => user.username === selectedUsernameRef.current);
+      const existing = sorted.find((user) => user.username === selectedUsername);
       const activeUser = existing || sorted[0];
       setSelectedUsername(activeUser.username);
       setAccessDraft(activeUser.access ? activeUser.access.map((entry) => ({ ...entry })) : []);
@@ -71,11 +66,11 @@ const UserManagementPanel = ({ onUsersChanged }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
     loadUsers();
-  }, [loadUsers]);
+  }, []);
 
   useEffect(() => {
     if (!message) {

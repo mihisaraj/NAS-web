@@ -16,7 +16,13 @@ const Toolbar = ({
   allowQuickLook = true,
   allowViewToggle = true,
   uploadState = {},
-  isRefreshing = false,
+  onCopy,
+  onCut,
+  onPaste,
+  canCopy = false,
+  canCut = false,
+  canPaste = false,
+  clipboardLabel = '',
 }) => {
   const inputRef = useRef(null);
   const isUploading = Boolean(uploadState.active);
@@ -97,6 +103,41 @@ const Toolbar = ({
             👁️ Quick Look
           </button>
         )}
+        {onCopy && (
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/25 px-4 py-2 text-sm font-semibold text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] transition hover:border-white/35 hover:bg-white/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={onCopy}
+            disabled={!canCopy}
+          >
+            📄 Copy
+          </button>
+        )}
+        {onCut && (
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/25 px-4 py-2 text-sm font-semibold text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] transition hover:border-white/35 hover:bg-white/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={onCut}
+            disabled={!canCut}
+          >
+            ✂️ Cut
+          </button>
+        )}
+        {onPaste && (
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-full border border-blue-200/70 bg-blue-100/60 px-4 py-2 text-sm font-semibold text-blue-700 shadow-[0_20px_45px_-28px_rgba(59,130,246,0.7)] transition hover:border-blue-300 hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={onPaste}
+            disabled={!canPaste}
+          >
+            📥 Paste
+          </button>
+        )}
+        {clipboardLabel ? (
+          <span className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/20 px-3 py-1 text-xs font-semibold text-blue-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]">
+            {clipboardLabel}
+          </span>
+        ) : null}
         {allowCreate && (
           <button
             type="button"
@@ -130,16 +171,10 @@ const Toolbar = ({
         )}
         <button
           type="button"
-          className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/25 px-4 py-2 text-sm font-semibold text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] transition hover:border-white/35 hover:bg-white/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-wait disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/25 px-4 py-2 text-sm font-semibold text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] transition hover:border-white/35 hover:bg-white/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
           onClick={onRefresh}
-          disabled={isRefreshing}
         >
-          <span className="inline-flex items-center gap-2">
-            <span className={isRefreshing ? 'inline-block animate-spin' : ''} aria-hidden="true">
-              🔄
-            </span>
-            <span>{isRefreshing ? 'Refreshing…' : 'Refresh'}</span>
-          </span>
+          🔄 Refresh
         </button>
         <input ref={inputRef} type="file" multiple onChange={handleFilesSelected} hidden />
       </div>

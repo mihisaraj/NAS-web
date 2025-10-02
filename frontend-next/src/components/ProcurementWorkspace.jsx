@@ -360,6 +360,5 @@ const ProcurementWorkspace = forwardRef(({ role, currentUser, onOpenWindow }, re
   );
 });
 
-ProcurementWorkspace.displayName = 'ProcurementWorkspace';
-
 export default ProcurementWorkspace;
+

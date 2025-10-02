@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import Image from 'next/image';
 
 const QuickLook = ({
   isOpen,
@@ -70,18 +69,7 @@ const QuickLook = ({
     );
   } else if (previewUrl) {
     if (mimeType?.startsWith('image/')) {
-      content = (
-        <div className="relative mx-auto h-full max-h-[70vh] w-full">
-          <Image
-            src={previewUrl}
-            alt={title}
-            fill
-            className="rounded-2xl object-contain"
-            sizes="(min-width: 1024px) 70vh, 100vw"
-            unoptimized
-          />
-        </div>
-      );
+      content = <img className="h-full max-h-[70vh] w-full rounded-2xl object-contain" src={previewUrl} alt={title} />;
     } else if (mimeType?.startsWith('audio/')) {
       content = (
         <div className="flex h-full items-center justify-center">

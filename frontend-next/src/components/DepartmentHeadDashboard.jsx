@@ -23,14 +23,14 @@ const normalizePath = (input) => {
 };
 
 const DepartmentHeadDashboard = ({ user, onPasswordChange }) => {
-  const accessList = useMemo(() => (Array.isArray(user.access) ? user.access : []), [user.access]);
+  const accessList = Array.isArray(user.access) ? user.access : [];
   const [selectedPath, setSelectedPath] = useState(accessList[0]?.path || '');
   const procurementRef = useRef(null);
   const [windowState, setWindowState] = useState(null);
 
   useEffect(() => {
     setSelectedPath(accessList[0]?.path || '');
-  }, [accessList, user.username]);
+  }, [user.username, accessList]);
 
   const passwordLookup = useMemo(() => {
     return (path) => {

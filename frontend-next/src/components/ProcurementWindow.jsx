@@ -124,7 +124,7 @@ const ProcurementWindow = ({
       .finally(() => {
         setLoading(false);
       });
-  }, [activeId, mode, request]);
+  }, [activeId, mode]);
 
   useEffect(() => {
     setError('');
@@ -854,3 +854,4 @@ const DetailBlock = ({ title, body }) => (
 );
 
 export default ProcurementWindow;
+

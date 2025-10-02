@@ -10,7 +10,17 @@ function resolveBaseUrl() {
     }
   }
 
-  // Note: avoid Vite-specific import.meta in Next.js builds
+  try {
+    const isSupported = eval('typeof ' + 'import.meta' + ' !== "undefined"');
+    if (isSupported) {
+      const env = eval('(' + 'import.meta' + '.env)');
+      if (typeof env.VITE_API_URL !== "undefined") {
+        return env.VITE_API_URL;
+      }
+    }
+  } catch (error) {
+    // ignore – import.meta is not available in all runtimes
+  }
 
   return '';
 }
@@ -248,6 +258,10 @@ async function request(path, options = {}) {
   return payload;
 }
 
+export function getStorageStatus() {
+  return request('/storage/status');
+}
+
 export function listItems(path = '') {
   const params = new URLSearchParams();
   if (path) {
@@ -368,6 +382,34 @@ export function renameItem(path, newName, password) {
   return request('/items/rename', {
     method: 'PUT',
     body: { path, newName, password },
+  });
+}
+
+export function copyItem(source, destination, { newName, password } = {}) {
+  const payload = { source, destination };
+  if (newName) {
+    payload.newName = newName;
+  }
+  if (password) {
+    payload.password = password;
+  }
+  return request('/items/copy', {
+    method: 'POST',
+    body: payload,
+  });
+}
+
+export function moveItem(source, destination, { newName, password } = {}) {
+  const payload = { source, destination };
+  if (newName) {
+    payload.newName = newName;
+  }
+  if (password) {
+    payload.password = password;
+  }
+  return request('/items/move', {
+    method: 'POST',
+    body: payload,
   });
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useDialog from './dialog/useDialog.js';
 import Breadcrumbs from './Breadcrumbs.jsx';
 import FileList from './FileList.jsx';
@@ -112,6 +112,7 @@ const FileManager = ({
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [refreshToken, setRefreshToken] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   const [viewMode, setViewMode] = useState(() => {
     if (typeof window !== 'undefined') {
       return window.localStorage.getItem('hts-view-mode') || 'grid';
@@ -123,6 +124,8 @@ const FileManager = ({
   const [quickLook, setQuickLook] = useState(initialQuickLookState);
   const [clipboard, setClipboard] = useState(initialClipboardState);
   const [dragState, setDragState] = useState(initialDragState);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const initialLoadCompleteRef = useRef(false);
   const previewUrlRef = useRef('');
   const uploadResetTimeoutRef = useRef(null);
   const currentPathRef = useRef(currentPath);
@@ -145,7 +148,9 @@ const FileManager = ({
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
+    if (!initialLoadCompleteRef.current) {
+      setLoading(true);
+    }
     setError('');
 
     listItems(currentPath)
@@ -170,6 +175,9 @@ const FileManager = ({
       .finally(() => {
         if (active) {
           setLoading(false);
+          setRefreshing(false);
+          setInitialLoadComplete(true);
+          initialLoadCompleteRef.current = true;
         }
       });
 
@@ -378,9 +386,10 @@ const FileManager = ({
     };
   }, [normalizedRoot]);
 
-  const refresh = () => {
+  const refresh = useCallback(() => {
+    setRefreshing(true);
     setRefreshToken((token) => token + 1);
-  };
+  }, []);
   refreshRef.current = refresh;
 
   const updatePath = (path) => {
@@ -397,6 +406,16 @@ const FileManager = ({
   const handleNavigate = (path) => {
     updatePath(path || '');
   };
+
+  useEffect(() => {
+    if (!initialLoadComplete) {
+      return undefined;
+    }
+    const interval = setInterval(() => {
+      refreshRef.current();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [initialLoadComplete]);
 
   const parentPath = useMemo(() => {
     if (!currentPath) {
@@ -1152,6 +1171,7 @@ const FileManager = ({
           canCut={canCutSelected}
           canPaste={canPasteFromClipboard}
           clipboardLabel={clipboardLabel}
+          isRefreshing={refreshing}
         />
 
         <Breadcrumbs breadcrumbs={breadcrumbs} onNavigate={handleNavigate} />

@@ -23,6 +23,7 @@ const Toolbar = ({
   canCut = false,
   canPaste = false,
   clipboardLabel = '',
+  isRefreshing = false,
 }) => {
   const inputRef = useRef(null);
   const isUploading = Boolean(uploadState.active);
@@ -174,7 +175,10 @@ const Toolbar = ({
           className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/25 px-4 py-2 text-sm font-semibold text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] transition hover:border-white/35 hover:bg-white/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
           onClick={onRefresh}
         >
-          🔄 Refresh
+          <span aria-hidden="true" className={isRefreshing ? 'animate-spin' : ''}>
+            🔄
+          </span>
+          Refresh
         </button>
         <input ref={inputRef} type="file" multiple onChange={handleFilesSelected} hidden />
       </div>

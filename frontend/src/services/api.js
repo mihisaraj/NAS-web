@@ -92,76 +92,209 @@ function scheduleEventStreamReconnect() {
   eventStreamBackoffAttempts += 1;
 }
 
-async function startEventStream() {
-  if (eventStreamConnecting || eventSourceInstance || eventStreamAbortController || !authToken || eventListeners.size === 0) {
-    return;
+function createEventSource() {
+  let eventUrl = `${API_ROOT.replace(/\/$/, '')}/events`;
+  if (typeof window !== 'undefined' && !eventUrl.startsWith('http')) {
+    const baseOrigin = window.location.origin;
+    if (!eventUrl.startsWith('/')) {
+      eventUrl = `/${eventUrl}`;
+    }
+    eventUrl = `${baseOrigin}${eventUrl}`;
   }
-  if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
+  const url = new URL(eventUrl);
+  url.searchParams.set('token', authToken);
+  try {
+    const source = new EventSource(url.toString(), { withCredentials: true });
+    return source;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function startFetchStream() {
+  if (eventStreamConnecting || eventStreamAbortController || eventSourceInstance || !authToken || eventListeners.size === 0) {
     return;
   }
   eventStreamConnecting = true;
   eventStreamBackoffAttempts = Math.max(eventStreamBackoffAttempts, 0);
   notifyEventListeners({ type: 'connection', data: { state: 'connecting' } });
 
+  const controller = new AbortController();
+  eventStreamAbortController = controller;
+
   try {
-    let eventUrl = `${API_ROOT.replace(/\/$/, '')}/events`;
-    if (!eventUrl.startsWith('http')) {
+    let streamUrl = `${API_ROOT.replace(/\/$/, '')}/events`;
+    if (typeof window !== 'undefined' && !streamUrl.startsWith('http')) {
       const baseOrigin = window.location.origin;
-      if (!eventUrl.startsWith('/')) {
-        eventUrl = `/${eventUrl}`;
+      if (!streamUrl.startsWith('/')) {
+        streamUrl = `/${streamUrl}`;
       }
-      eventUrl = `${baseOrigin}${eventUrl}`;
+      streamUrl = `${baseOrigin}${streamUrl}`;
     }
-    const url = new URL(eventUrl);
+    const url = new URL(streamUrl);
     url.searchParams.set('token', authToken);
 
-    const source = new EventSource(url.toString());
-    eventSourceInstance = source;
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
 
-    const handleIncomingEvent = (evt) => {
-      let payload = null;
-      if (evt.data) {
-        try {
-          payload = JSON.parse(evt.data);
-        } catch (parseError) {
-          payload = evt.data;
+    if (!response.ok) {
+      throw new Error(`Event stream error (${response.status})`);
+    }
+
+    if (!response.body) {
+      throw new Error('Event stream not supported by this browser');
+    }
+
+    eventStreamBackoffAttempts = 0;
+    eventStreamConnecting = false;
+    notifyEventListeners({ type: 'connection', data: { state: 'open' } });
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    const processBuffer = () => {
+      let separatorIndex = buffer.indexOf('\n\n');
+      while (separatorIndex !== -1) {
+        const rawEvent = buffer.slice(0, separatorIndex);
+        buffer = buffer.slice(separatorIndex + 2);
+        const trimmed = rawEvent.trim();
+        if (!trimmed || trimmed.startsWith(':')) {
+          separatorIndex = buffer.indexOf('\n\n');
+          continue;
         }
+
+        let eventType = 'message';
+        const dataLines = [];
+        trimmed
+          .replace(/\r/g, '')
+          .split('\n')
+          .forEach((line) => {
+            if (line.startsWith('event:')) {
+              const value = line.slice(6).trim();
+              if (value) {
+                eventType = value;
+              }
+            } else if (line.startsWith('data:')) {
+              dataLines.push(line.slice(5));
+            }
+          });
+
+        const dataPayload = dataLines.join('\n').trim();
+        let parsedData = null;
+        if (dataPayload) {
+          try {
+            parsedData = JSON.parse(dataPayload);
+          } catch (error) {
+            parsedData = dataPayload;
+          }
+        }
+
+        notifyEventListeners({ type: eventType, data: parsedData });
+        separatorIndex = buffer.indexOf('\n\n');
       }
-      notifyEventListeners({ type: evt.type || 'message', data: payload });
     };
 
-    source.onopen = () => {
-      eventStreamConnecting = false;
-      eventStreamBackoffAttempts = 0;
-      notifyEventListeners({ type: 'connection', data: { state: 'open' } });
-    };
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      processBuffer();
+    }
 
-    source.onmessage = handleIncomingEvent;
-    source.addEventListener('items', handleIncomingEvent);
+    buffer += decoder.decode();
+    processBuffer();
 
-    source.onerror = (error) => {
+    notifyEventListeners({ type: 'connection', data: { state: 'closed' } });
+  } catch (error) {
+    if (!controller.signal.aborted) {
       notifyEventListeners({
         type: 'connection',
-        data: { state: 'error', message: error?.message || 'Event stream error' },
+        data: { state: 'error', message: error.message || 'Event stream error' },
       });
-      source.close();
-      eventSourceInstance = null;
-      eventStreamConnecting = false;
-      if (!authToken || eventListeners.size === 0) {
-        return;
-      }
-      scheduleEventStreamReconnect();
-    };
-  } catch (error) {
-    eventStreamConnecting = false;
-    notifyEventListeners({
-      type: 'connection',
-      data: { state: 'error', message: error.message || 'Event stream error' },
-    });
-    if (authToken && eventListeners.size > 0) {
-      scheduleEventStreamReconnect();
     }
+  } finally {
+    eventStreamAbortController = null;
+    eventStreamConnecting = false;
+    if (!authToken || eventListeners.size === 0) {
+      return;
+    }
+    scheduleEventStreamReconnect();
   }
+}
+
+async function startEventStream() {
+  if (eventStreamConnecting || eventSourceInstance || eventStreamAbortController || !authToken || eventListeners.size === 0) {
+    return;
+  }
+
+  if (typeof window !== 'undefined' && typeof EventSource === 'function') {
+    eventStreamConnecting = true;
+    eventStreamBackoffAttempts = Math.max(eventStreamBackoffAttempts, 0);
+    notifyEventListeners({ type: 'connection', data: { state: 'connecting' } });
+
+    const source = createEventSource();
+    if (source) {
+      eventSourceInstance = source;
+
+      const handleOpen = () => {
+        eventStreamConnecting = false;
+        eventStreamBackoffAttempts = 0;
+        notifyEventListeners({ type: 'connection', data: { state: 'open' } });
+      };
+
+      const handleIncomingEvent = (evt) => {
+        let payload = null;
+        if (evt.data) {
+          try {
+            payload = JSON.parse(evt.data);
+          } catch (parseError) {
+            payload = evt.data;
+          }
+        }
+        notifyEventListeners({ type: evt.type || 'message', data: payload });
+      };
+
+      const handleError = (error) => {
+        notifyEventListeners({
+          type: 'connection',
+          data: { state: 'error', message: error?.message || 'Event stream error' },
+        });
+        source.onopen = null;
+        source.onmessage = null;
+        source.removeEventListener('items', handleIncomingEvent);
+        source.onerror = null;
+        source.close();
+        eventSourceInstance = null;
+        eventStreamConnecting = false;
+        if (!authToken || eventListeners.size === 0) {
+          return;
+        }
+        if (typeof window !== 'undefined') {
+          startFetchStream();
+        } else {
+          scheduleEventStreamReconnect();
+        }
+      };
+
+      source.onopen = handleOpen;
+      source.onmessage = handleIncomingEvent;
+      source.addEventListener('items', handleIncomingEvent);
+      source.onerror = handleError;
+      return;
+    }
+    eventStreamConnecting = false;
+  }
+
+  startFetchStream();
 }
 
 function restartEventStream() {

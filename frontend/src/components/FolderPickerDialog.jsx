@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { listItems } from '../services/api.js';
 
 const sanitizePath = (input) => {
@@ -32,6 +33,26 @@ const FolderPickerDialog = ({
   const [folders, setFolders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [portalContainer, setPortalContainer] = useState(null);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return undefined;
+    }
+    const container = document.createElement('div');
+    container.setAttribute('data-folder-picker-portal', '');
+    document.body.appendChild(container);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    setPortalContainer(container);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      if (container.parentNode) {
+        container.parentNode.removeChild(container);
+      }
+    };
+  }, []);
 
   const assignedInfo = useMemo(() => {
     if (!multiSelect) {
@@ -204,7 +225,7 @@ const FolderPickerDialog = ({
     return sanitizePath(resolvedPath ? `${resolvedPath}/${folder?.name ?? ''}` : folder?.name ?? '');
   };
 
-  return (
+  const dialog = (
     <div className="fixed inset-0 z-[1300] flex items-center justify-center overflow-y-auto bg-slate-900/70 p-4 backdrop-blur">
       <div className="relative w-full max-w-4xl rounded-3xl border border-white/20 bg-white/65 p-6 text-slate-900 shadow-[0_35px_70px_-30px_rgba(15,23,42,0.6)]">
         <div className="pointer-events-none absolute inset-0 rounded-3xl border border-white/35" aria-hidden="true" />
@@ -410,6 +431,12 @@ const FolderPickerDialog = ({
       </div>
     </div>
   );
+
+  if (!portalContainer) {
+    return null;
+  }
+
+  return createPortal(dialog, portalContainer);
 };
 
 export default FolderPickerDialog;

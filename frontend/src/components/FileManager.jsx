@@ -314,17 +314,39 @@ const FileManager = ({
       }
 
       const shouldRefresh =
-        normalizedPaths.includes(normalizedCurrent) ||
+        normalizedPaths.some((pathValue) => {
+          const candidate = sanitizePath(pathValue || '');
+          if (!normalizedCurrent) {
+            return true;
+          }
+          if (candidate === normalizedCurrent) {
+            return true;
+          }
+          if (!candidate) {
+            return normalizedCurrent === '';
+          }
+          return (
+            candidate.startsWith(`${normalizedCurrent}/`) ||
+            normalizedCurrent.startsWith(`${candidate}/`)
+          );
+        }) ||
         normalizedItems.some((item) => {
           const candidates = [item.path, item.previousPath].filter(Boolean);
-          return candidates.some((candidate) => {
+          return candidates.some((candidateRaw) => {
+            const candidate = sanitizePath(candidateRaw || '');
+            if (!normalizedCurrent) {
+              return true;
+            }
             if (candidate === normalizedCurrent) {
               return true;
             }
-            if (!candidate || !normalizedCurrent) {
-              return false;
+            if (!candidate) {
+              return normalizedCurrent === '';
             }
-            return normalizedCurrent.startsWith(`${candidate}/`);
+            return (
+              candidate.startsWith(`${normalizedCurrent}/`) ||
+              normalizedCurrent.startsWith(`${candidate}/`)
+            );
           });
         });
 

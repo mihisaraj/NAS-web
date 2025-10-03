@@ -12,7 +12,6 @@ if (typeof window !== 'undefined') {
     window.__HTS_API_URL__ = apiUrl.replace(/\/$/, '');
   }
 }
-//
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

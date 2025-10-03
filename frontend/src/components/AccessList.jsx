@@ -1,4 +1,5 @@
 const AccessList = ({ access = [], selectedPath, onSelect }) => {
+
   if (!Array.isArray(access) || access.length === 0) {
     return (
       <div className="glass-panel relative flex flex-col gap-4 overflow-hidden p-5">
@@ -16,7 +17,7 @@ const AccessList = ({ access = [], selectedPath, onSelect }) => {
       <div className="pointer-events-none chroma-grid" />
       <div className="relative z-10 space-y-1">
         <h2 className="text-lg font-bold text-slate-900">Assigned folders</h2>
-        <p className="text-sm font-medium text-slate-500">Select a folder to browse files and see the associated password.</p>
+        <p className="text-sm font-medium text-slate-500">Select a folder to browse files assigned to this account.</p>
       </div>
       <ul className="relative z-10 flex flex-col gap-3">
         {access.map((entry) => {
@@ -34,9 +35,6 @@ const AccessList = ({ access = [], selectedPath, onSelect }) => {
               >
                 <span className={`text-base font-bold ${isActive ? 'text-blue-900' : 'text-slate-900'}`}>
                   {entry.path || 'Full storage access'}
-                </span>
-                <span className={`font-mono text-xs ${isActive ? 'text-blue-700/90' : 'text-slate-500/90'}`}>
-                  Password: {entry.password}
                 </span>
               </button>
             </li>

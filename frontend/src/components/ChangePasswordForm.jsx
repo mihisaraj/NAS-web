@@ -112,4 +112,5 @@ const ChangePasswordForm = ({ title = 'Change Password', onSubmit }) => {
   );
 };
 
+
 export default ChangePasswordForm;

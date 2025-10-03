@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import AccessList from './AccessList.jsx';
 import FileManager from './FileManager.jsx';
 import ProtocolHub from './ProtocolHub.jsx';
@@ -6,21 +6,6 @@ import ProcurementWorkspace from './ProcurementWorkspace.jsx';
 import ProcurementWindow from './ProcurementWindow.jsx';
 import NoticeBoard from './NoticeBoard.jsx';
 import ChangePasswordForm from './ChangePasswordForm.jsx';
-
-const normalizePath = (input) => {
-  if (typeof input !== 'string') {
-    return '';
-  }
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return '';
-  }
-  return trimmed
-    .replace(/\\/g, '/')
-    .replace(/\/+/g, '/')
-    .replace(/^\/+/, '')
-    .replace(/\/+$/, '');
-};
 
 const DepartmentHeadDashboard = ({ user, onPasswordChange }) => {
   const accessList = Array.isArray(user.access) ? user.access : [];
@@ -31,14 +16,6 @@ const DepartmentHeadDashboard = ({ user, onPasswordChange }) => {
   useEffect(() => {
     setSelectedPath(accessList[0]?.path || '');
   }, [user.username, accessList]);
-
-  const passwordLookup = useMemo(() => {
-    return (path) => {
-      const normalized = normalizePath(path);
-      const match = accessList.find((entry) => normalizePath(entry.path || '') === normalized);
-      return match?.password;
-    };
-  }, [accessList]);
 
   const hasAssignedAccess = accessList.length > 0;
 
@@ -90,7 +67,11 @@ const DepartmentHeadDashboard = ({ user, onPasswordChange }) => {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-6">
           <section>
-            <AccessList access={accessList} selectedPath={selectedPath} onSelect={setSelectedPath} />
+            <AccessList
+              access={accessList}
+              selectedPath={selectedPath}
+              onSelect={setSelectedPath}
+            />
           </section>
 
           {hasAssignedAccess && (
@@ -100,8 +81,7 @@ const DepartmentHeadDashboard = ({ user, onPasswordChange }) => {
                 subtitle="Work across folders assigned to your department."
                 initialPath={selectedPath}
                 rootPath={selectedPath}
-                allowLockToggle={false}
-                passwordLookup={passwordLookup}
+                allowLockToggle
               />
             </section>
           )}

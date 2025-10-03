@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import useDialog from './dialog/useDialog.js';
 import { fetchUsers, createUser, updateUser, deleteUser } from '../services/api.js';
+import FolderPickerDialog from './FolderPickerDialog.jsx';
 
 const normalizePath = (input) => {
   if (typeof input !== 'string') {
@@ -43,6 +44,7 @@ const UserManagementPanel = ({ onUsersChanged }) => {
   const [newUser, setNewUser] = useState(initialNewUser);
   const [savingAccess, setSavingAccess] = useState(false);
   const [updatingUser, setUpdatingUser] = useState(false);
+  const [folderPickerState, setFolderPickerState] = useState({ mode: null, index: null });
 
   const loadUsers = async () => {
     setLoading(true);
@@ -59,7 +61,9 @@ const UserManagementPanel = ({ onUsersChanged }) => {
       const existing = sorted.find((user) => user.username === selectedUsername);
       const activeUser = existing || sorted[0];
       setSelectedUsername(activeUser.username);
-      setAccessDraft(activeUser.access ? activeUser.access.map((entry) => ({ ...entry })) : []);
+      setAccessDraft(
+        activeUser.access ? activeUser.access.map((entry) => ({ path: entry.path || '' })) : []
+      );
     } catch (err) {
       setError(err.message || 'Unable to load users.');
       setUsers([]);
@@ -87,7 +91,7 @@ const UserManagementPanel = ({ onUsersChanged }) => {
   const handleSelectUser = (username) => {
     setSelectedUsername(username);
     const target = users.find((user) => user.username === username);
-    setAccessDraft(target?.access ? target.access.map((entry) => ({ ...entry })) : []);
+    setAccessDraft(target?.access ? target.access.map((entry) => ({ path: entry.path || '' })) : []);
   };
 
   const handleAccessChange = (index, field, value) => {
@@ -101,7 +105,73 @@ const UserManagementPanel = ({ onUsersChanged }) => {
   };
 
   const handleAddAccess = () => {
-    setAccessDraft((entries) => [...entries, { path: '', password: '' }]);
+    setError('');
+    setFolderPickerState({ mode: 'multi', index: null });
+  };
+
+  const handleOpenFolderPicker = (index) => {
+    setError('');
+    setFolderPickerState({ mode: 'single', index });
+  };
+
+  const handleFolderSelected = (path) => {
+    if (folderPickerState.mode !== 'single' || folderPickerState.index === null) {
+      return;
+    }
+    const normalized = normalizePath(path || '');
+    setAccessDraft((entries) =>
+      entries.map((entry, idx) => (idx === folderPickerState.index ? { ...entry, path: normalized } : entry))
+    );
+    setFolderPickerState({ mode: null, index: null });
+  };
+
+  const handleMultipleFoldersSelected = (paths) => {
+    if (!Array.isArray(paths)) {
+      setFolderPickerState({ mode: null, index: null });
+      return;
+    }
+    const deduped = [];
+    const seen = new Set();
+    paths.forEach((input) => {
+      const normalized = normalizePath(input || '');
+      if (!seen.has(normalized)) {
+        seen.add(normalized);
+        deduped.push(normalized);
+      }
+    });
+
+    if (deduped.length === 0) {
+      setFolderPickerState({ mode: null, index: null });
+      setError('');
+      setMessage('All selected folders are already assigned.');
+      return;
+    }
+
+    let additionsCount = 0;
+    setAccessDraft((entries) => {
+      const existing = new Set(entries.map((entry) => normalizePath(entry.path || '')));
+      const additions = deduped
+        .filter((path) => !existing.has(path))
+        .map((path) => ({ path }));
+      additionsCount = additions.length;
+      if (additions.length === 0) {
+        return entries;
+      }
+      return [...entries, ...additions];
+    });
+
+    setFolderPickerState({ mode: null, index: null });
+    if (additionsCount === 0) {
+      setError('');
+      setMessage('All selected folders are already assigned.');
+      return;
+    }
+    setError('');
+    setMessage(`Added ${additionsCount} folder${additionsCount > 1 ? 's' : ''}.`);
+  };
+
+  const handleFolderPickerClose = () => {
+    setFolderPickerState({ mode: null, index: null });
   };
 
   const handleSaveAccess = async () => {
@@ -112,12 +182,7 @@ const UserManagementPanel = ({ onUsersChanged }) => {
     setMessage('');
     const formatted = accessDraft.map((entry) => ({
       path: normalizePath(entry.path || ''),
-      password: (entry.password || '').trim(),
     }));
-    if (formatted.some((entry) => !entry.password)) {
-      setError('Every folder access must include a password.');
-      return;
-    }
     setSavingAccess(true);
     try {
       await updateUser(selectedUser.username, { access: formatted });
@@ -355,20 +420,36 @@ const UserManagementPanel = ({ onUsersChanged }) => {
                         className="flex flex-col gap-2 rounded-2xl border border-white/30 bg-white/35 p-3 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.4)] sm:flex-row sm:items-center"
                         key={`${entry.path}-${index}`}
                       >
-                        <input
-                          type="text"
-                          value={entry.path}
-                          onChange={(event) => handleAccessChange(index, 'path', event.target.value)}
-                          placeholder="Folder path (e.g. Projects/TeamA)"
-                          className="w-full rounded-2xl border border-white/35 bg-white/40 px-4 py-2.5 text-sm font-medium text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] transition focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/40"
-                        />
-                        <input
-                          type="text"
-                          value={entry.password}
-                          onChange={(event) => handleAccessChange(index, 'password', event.target.value)}
-                          placeholder="Password"
-                          className="w-full rounded-2xl border border-white/35 bg-white/40 px-4 py-2.5 text-sm font-medium text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] transition focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/40"
-                        />
+                        <div className="flex w-full flex-col gap-1">
+                          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">
+                            Folder
+                          </span>
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                            <div className="flex-1 rounded-2xl border border-white/35 bg-white/40 px-4 py-2.5 text-sm font-medium text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]">
+                              {entry.path ? entry.path : 'Full storage access'}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                className="inline-flex items-center justify-center rounded-full border border-white/25 bg-white/30 px-4 py-2 text-sm font-semibold text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] transition hover:border-blue-300/60 hover:bg-blue-50/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+                                onClick={() => handleOpenFolderPicker(index)}
+                                disabled={savingAccess}
+                              >
+                                Browse…
+                              </button>
+                              {entry.path ? (
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center justify-center rounded-full border border-white/25 bg-white/30 px-3 py-2 text-xs font-semibold text-rose-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] transition hover:border-rose-300/60 hover:bg-rose-50/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500"
+                                  onClick={() => handleAccessChange(index, 'path', '')}
+                                  disabled={savingAccess}
+                                >
+                                  Clear
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
                         <button
                           type="button"
                           className="inline-flex items-center justify-center rounded-full border border-white/25 bg-white/30 px-4 py-2 text-sm font-semibold text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] transition hover:border-white/35 hover:bg-white/45 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
@@ -391,6 +472,21 @@ const UserManagementPanel = ({ onUsersChanged }) => {
                     </button>
                   </div>
                 </div>
+                {folderPickerState.mode === 'single' ? (
+                  <FolderPickerDialog
+                    initialPath={accessDraft[folderPickerState.index]?.path || ''}
+                    onSelect={handleFolderSelected}
+                    onCancel={handleFolderPickerClose}
+                  />
+                ) : null}
+                {folderPickerState.mode === 'multi' ? (
+                  <FolderPickerDialog
+                    multiSelect
+                    existingPaths={accessDraft.map((entry) => normalizePath(entry.path || ''))}
+                    onSelectMultiple={handleMultipleFoldersSelected}
+                    onCancel={handleFolderPickerClose}
+                  />
+                ) : null}
                 <div className="relative z-10 flex flex-wrap gap-3">
                   <button
                     type="button"

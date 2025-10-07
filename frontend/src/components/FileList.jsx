@@ -440,7 +440,7 @@ const FileList = ({
 
   const renderListView = () => (
     <div
-      className={`overflow-hidden rounded-2xl border border-white/30 bg-white/45 shadow-[0_24px_48px_-32px_rgba(15,23,42,0.45)] ${
+      className={`relative max-w-full overflow-x-auto rounded-2xl border border-white/30 bg-white/45 shadow-[0_24px_48px_-32px_rgba(15,23,42,0.45)] ${
         isDraggingOverRoot ? 'ring-2 ring-blue-300/60 bg-blue-50/60 border-blue-200/70' : ''
       }`}
       onDragOver={handleRootDragOver}
@@ -451,10 +451,10 @@ const FileList = ({
         <thead className="bg-white/40 text-xs font-semibold uppercase tracking-wide text-slate-500">
           <tr>
             <th className="px-4 py-3 text-left">Name</th>
-            <th className="px-4 py-3 text-left">Type</th>
-            <th className="px-4 py-3 text-right">Size</th>
-            <th className="px-4 py-3 text-left">Modified</th>
-            <th className="px-4 py-3 text-left">Status</th>
+            <th className="hidden px-4 py-3 text-left md:table-cell">Type</th>
+            <th className="hidden px-4 py-3 text-right md:table-cell">Size</th>
+            <th className="hidden px-4 py-3 text-left lg:table-cell">Modified</th>
+            <th className="hidden px-4 py-3 text-left lg:table-cell">Status</th>
             <th className="px-4 py-3 text-right">Actions</th>
           </tr>
         </thead>
@@ -463,7 +463,9 @@ const FileList = ({
             const isDirectory = item.type === 'directory';
             const icon = getFileGlyph(item);
             const lockIcon = item.isLocked ? '🔒' : '🔓';
-            const modified = new Date(item.modified).toLocaleString();
+            const modifiedDate = new Date(item.modified);
+            const modified = modifiedDate.toLocaleString();
+            const modifiedShort = modifiedDate.toLocaleDateString();
             const isSelected = selectedPath === item.path;
             const isDragTarget = dragOverPath === item.path;
 
@@ -512,130 +514,140 @@ const FileList = ({
                 onDragLeave={(event) => handleItemDragLeave(event, item)}
                 onDrop={(event) => handleItemDrop(event, item)}
               >
-                <td className="whitespace-nowrap px-4 py-3 text-left font-semibold text-slate-700">
-                  <span className="mr-2 text-lg" aria-hidden="true">
-                    {icon}
-                  </span>
-                  {item.name}
+                <td className="px-4 py-3 text-left font-semibold text-slate-700">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg" aria-hidden="true">
+                      {icon}
+                    </span>
+                    <span className="break-words">{item.name}</span>
+                  </div>
+                  <div className="mt-2 text-xs font-medium text-slate-500 md:hidden">
+                    {isDirectory ? 'Folder' : 'File'} · {formatSize(item.size)}
+                  </div>
+                  <div className="text-xs font-medium text-slate-500 md:hidden">
+                    {modifiedShort} · {item.isLocked ? 'Locked' : 'Unlocked'}
+                  </div>
                 </td>
-                <td className="whitespace-nowrap px-4 py-3 text-left text-slate-500">
+                <td className="hidden px-4 py-3 text-left text-slate-500 md:table-cell">
                   {isDirectory ? 'Folder' : 'File'}
                 </td>
-                <td className="whitespace-nowrap px-4 py-3 text-right font-mono text-xs text-slate-500">
+                <td className="hidden px-4 py-3 text-right font-mono text-xs text-slate-500 md:table-cell">
                   {formatSize(item.size)}
                 </td>
-                <td className="whitespace-nowrap px-4 py-3 text-left text-slate-500">
+                <td className="hidden px-4 py-3 text-left text-slate-500 lg:table-cell">
                   {modified}
                 </td>
-                <td className="whitespace-nowrap px-4 py-3 text-left text-slate-500">
+                <td className="hidden px-4 py-3 text-left text-slate-500 lg:table-cell">
                   {item.isLocked ? 'Locked' : 'Unlocked'}
                 </td>
-                <td className="whitespace-nowrap px-4 py-3 text-right">
-                  {isDirectory ? (
-                    <button
-                      type="button"
-                      className={primaryButtonClass}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onSelect(item);
-                        onOpen(item);
-                      }}
-                  >
-                    Open
-                  </button>
-                  ) : (
-                    <>
-                      {allowQuickLook && (
-                        <button
-                          type="button"
-                          className={primaryButtonClass}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onSelect(item);
-                          onQuickLook(item);
-                        }}
-                      >
-                        Quick Look
-                      </button>
-                      )}
+                <td className="px-4 py-3 text-right">
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {isDirectory ? (
                       <button
                         type="button"
                         className={primaryButtonClass}
                         onClick={(event) => {
                           event.stopPropagation();
                           onSelect(item);
-                        onDownload(item);
-                      }}
-                    >
-                      Download
-                    </button>
-                  </>
-                )}
-                {allowRename && (
-                  <button
-                    type="button"
-                    className={secondaryButtonClass}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onSelect(item);
-                      onRename(item);
-                    }}
-                  >
-                    Rename
-                  </button>
-                )}
-                  {allowDelete && (
-                    <button
-                      type="button"
-                      className={dangerButtonClass}
-                      onClick={(event) => {
-                      event.stopPropagation();
-                      onSelect(item);
-                      onDelete(item);
-                    }}
-                  >
-                      Delete
-                    </button>
-                  )}
-                  {onCopyItem && (
-                    <button
-                      type="button"
-                      className={secondaryButtonClass}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onSelect(item);
-                        onCopyItem(item);
-                      }}
-                    >
-                      Copy
-                    </button>
-                  )}
-                  {onCutItem && (
-                    <button
-                      type="button"
-                      className={secondaryButtonClass}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onSelect(item);
-                        onCutItem(item);
-                      }}
-                    >
-                      Cut
-                    </button>
-                  )}
-                  {allowLockToggle && (
-                    <button
-                      type="button"
-                      className={secondaryButtonClass}
-                      onClick={(event) => {
-                      event.stopPropagation();
-                      onSelect(item);
-                      onToggleLock(item);
-                    }}
-                  >
-                    {lockIcon} {item.isLocked ? 'Unlock' : 'Lock'}
-                  </button>
-                )}
+                          onOpen(item);
+                        }}
+                      >
+                        Open
+                      </button>
+                    ) : (
+                      <>
+                        {allowQuickLook && (
+                          <button
+                            type="button"
+                            className={primaryButtonClass}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onSelect(item);
+                              onQuickLook(item);
+                            }}
+                          >
+                            Quick Look
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className={primaryButtonClass}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onSelect(item);
+                            onDownload(item);
+                          }}
+                        >
+                          Download
+                        </button>
+                      </>
+                    )}
+                    {allowRename && (
+                      <button
+                        type="button"
+                        className={secondaryButtonClass}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onSelect(item);
+                          onRename(item);
+                        }}
+                      >
+                        Rename
+                      </button>
+                    )}
+                    {allowDelete && (
+                      <button
+                        type="button"
+                        className={dangerButtonClass}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onSelect(item);
+                          onDelete(item);
+                        }}
+                      >
+                        Delete
+                      </button>
+                    )}
+                    {onCopyItem && (
+                      <button
+                        type="button"
+                        className={secondaryButtonClass}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onSelect(item);
+                          onCopyItem(item);
+                        }}
+                      >
+                        Copy
+                      </button>
+                    )}
+                    {onCutItem && (
+                      <button
+                        type="button"
+                        className={secondaryButtonClass}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onSelect(item);
+                          onCutItem(item);
+                        }}
+                      >
+                        Cut
+                      </button>
+                    )}
+                    {allowLockToggle && (
+                      <button
+                        type="button"
+                        className={secondaryButtonClass}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onSelect(item);
+                          onToggleLock(item);
+                        }}
+                      >
+                        {lockIcon} {item.isLocked ? 'Unlock' : 'Lock'}
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             );

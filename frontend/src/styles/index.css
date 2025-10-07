@@ -237,6 +237,7 @@
   .app-topbar__user {
     display: inline-flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 0.75rem;
     font-weight: 600;
     color: #0b1220;
@@ -334,6 +335,95 @@
 
   .app-main--center .app-main__content {
     align-items: center;
+  }
+
+  @media (max-width: 768px) {
+    .app-shell {
+      padding: 2.25rem 1.25rem 2.75rem;
+    }
+
+    .app-shell__inner {
+      gap: 1.5rem;
+    }
+
+    .app-topbar {
+      flex-direction: column;
+      align-items: stretch;
+      text-align: center;
+      padding: 1.1rem 1.25rem 1.35rem;
+      border-radius: 22px;
+    }
+
+    .app-brand {
+      flex-direction: column;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .app-brand__mark {
+      width: 2.75rem;
+      height: 2.75rem;
+      border-radius: 1rem;
+    }
+
+    .app-brand__title {
+      font-size: 1rem;
+    }
+
+    .app-brand__subtitle {
+      font-size: 0.65rem;
+      letter-spacing: 0.18em;
+    }
+
+    .app-topbar__meta {
+      width: 100%;
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: center;
+      gap: 0.85rem;
+    }
+
+    .app-topbar__user {
+      justify-content: center;
+    }
+
+    .app-topbar__chip {
+      font-size: 0.62rem;
+      letter-spacing: 0.12em;
+    }
+
+    .app-topbar__logout {
+      width: 100%;
+    }
+
+    .app-main {
+      padding: 1.35rem;
+      border-radius: 26px;
+    }
+
+    .app-main__content {
+      gap: 1.5rem;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .app-shell {
+      padding: 2rem 1rem 2.5rem;
+    }
+
+    .app-topbar {
+      gap: 1.25rem;
+    }
+
+    .app-brand__mark {
+      width: 2.35rem;
+      height: 2.35rem;
+    }
+
+    .app-main {
+      padding: 1.1rem;
+      border-radius: 22px;
+    }
   }
 }
 

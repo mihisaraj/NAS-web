@@ -4,14 +4,11 @@ const Breadcrumbs = ({ breadcrumbs, onNavigate }) => {
   const items = [{ name: "Home", path: "" }, ...(breadcrumbs || [])];
 
   return (
-    <nav
-      className="flex flex-wrap items-center gap-2 text-sm sm:text-base font-medium text-slate-300"
-      aria-label="Breadcrumb"
-    >
+    <nav className="flex max-w-full flex-nowrap items-center gap-2 overflow-x-auto text-sm font-medium text-slate-300 sm:text-base" aria-label="Breadcrumb">
       {items.map((crumb, index) => {
         const isLast = index === items.length - 1;
         return (
-          <div key={crumb.path || "root"} className="flex items-center">
+          <div key={crumb.path || "root"} className="flex flex-shrink-0 items-center">
             {!isLast ? (
               <button
                 onClick={() => onNavigate(crumb.path)}

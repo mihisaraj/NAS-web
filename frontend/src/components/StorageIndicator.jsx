@@ -62,7 +62,7 @@ const StorageIndicator = () => {
   if (!info && !loading && error) {
     return (
       <div
-        className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/20 backdrop-blur-lg px-4 py-2 text-sm font-medium text-rose-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]"
+        className="flex w-full items-center gap-2 rounded-xl border border-white/20 bg-white/20 backdrop-blur-lg px-4 py-2 text-sm font-medium text-rose-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)] sm:w-auto"
         title={error}
       >
         <HardDrive size={16} />
@@ -74,7 +74,7 @@ const StorageIndicator = () => {
   if (!info) {
     return (
       <div
-        className="flex items-center gap-2 rounded-xl border border-white/25 bg-white/25 backdrop-blur-md px-4 py-2 text-sm font-medium text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)] animate-pulse"
+        className="flex w-full items-center gap-2 rounded-xl border border-white/25 bg-white/25 backdrop-blur-md px-4 py-2 text-sm font-medium text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)] animate-pulse sm:w-auto"
         aria-live="polite"
       >
         <Loader2 size={16} className="animate-spin text-blue-500" />
@@ -96,12 +96,12 @@ const StorageIndicator = () => {
 
   return (
     <div
-      className="group relative flex items-center gap-3 rounded-xl border border-white/20 bg-gradient-to-r from-white/30 to-blue-100/20 backdrop-blur-2xl px-4 py-2 text-sm font-medium text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] hover:border-blue-300 transition-all"
+      className="group relative flex w-full items-center justify-between gap-3 rounded-xl border border-white/20 bg-gradient-to-r from-white/30 to-blue-100/20 backdrop-blur-2xl px-4 py-2 text-sm font-medium text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] hover:border-blue-300 transition-all sm:w-auto sm:justify-start"
       title={tooltip}
       aria-live="polite"
     >
       <Database size={16} className="text-blue-500" />
-      <div className="flex flex-col">
+      <div className="flex w-full flex-col items-start">
         <span className="font-semibold text-slate-800">Free {formattedFree}</span>
         <div className="relative mt-1 h-[6px] w-32 overflow-hidden rounded-full bg-white/50 backdrop-blur-sm">
           <div

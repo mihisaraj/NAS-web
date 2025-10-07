@@ -1,16 +1,15 @@
-import { useEffect, useState } from 'react';
-import { getStorageStatus } from '../services/api.js';
+"use client";
+
+import { useEffect, useState } from "react";
+import { getStorageStatus } from "../services/api.js";
+import { HardDrive, Database, Loader2 } from "lucide-react";
 
 const REFRESH_INTERVAL_MS = 30000;
 
 const formatBytes = (value) => {
-  if (!Number.isFinite(value) || value < 0) {
-    return 'N/A';
-  }
-  if (value === 0) {
-    return '0 B';
-  }
-  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  if (!Number.isFinite(value) || value < 0) return "N/A";
+  if (value === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
   let index = 0;
   let current = value;
   while (current >= 1024 && index < units.length - 1) {
@@ -22,14 +21,12 @@ const formatBytes = (value) => {
 };
 
 const formatPercentage = (value) => {
-  if (!Number.isFinite(value)) {
-    return 'N/A';
-  }
+  if (!Number.isFinite(value)) return "N/A";
   return `${Math.round(value)}%`;
 };
 
 const StorageIndicator = () => {
-  const [state, setState] = useState({ info: null, loading: true, error: '' });
+  const [state, setState] = useState({ info: null, loading: true, error: "" });
 
   useEffect(() => {
     let active = true;
@@ -38,34 +35,25 @@ const StorageIndicator = () => {
     const fetchStatus = async () => {
       try {
         const data = await getStorageStatus();
-        if (!active) {
-          return;
-        }
-        setState({ info: data, loading: false, error: '' });
+        if (!active) return;
+        setState({ info: data, loading: false, error: "" });
       } catch (error) {
-        if (!active) {
-          return;
-        }
+        if (!active) return;
         setState((prev) => ({
           info: prev.info,
           loading: false,
-          error: error?.message || 'Unable to load storage status',
+          error: error?.message || "Unable to load storage status",
         }));
       } finally {
-        if (!active) {
-          return;
-        }
+        if (!active) return;
         timerId = setTimeout(fetchStatus, REFRESH_INTERVAL_MS);
       }
     };
 
     fetchStatus();
-
     return () => {
       active = false;
-      if (timerId) {
-        clearTimeout(timerId);
-      }
+      if (timerId) clearTimeout(timerId);
     };
   }, []);
 
@@ -73,17 +61,25 @@ const StorageIndicator = () => {
 
   if (!info && !loading && error) {
     return (
-      <span className="glass-chip storage-indicator" title={error}>
+      <div
+        className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/20 backdrop-blur-lg px-4 py-2 text-sm font-medium text-rose-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]"
+        title={error}
+      >
+        <HardDrive size={16} />
         Storage unavailable
-      </span>
+      </div>
     );
   }
 
   if (!info) {
     return (
-      <span className="glass-chip storage-indicator" aria-live="polite">
+      <div
+        className="flex items-center gap-2 rounded-xl border border-white/25 bg-white/25 backdrop-blur-md px-4 py-2 text-sm font-medium text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)] animate-pulse"
+        aria-live="polite"
+      >
+        <Loader2 size={16} className="animate-spin text-blue-500" />
         Checking storage...
-      </span>
+      </div>
     );
   }
 
@@ -96,10 +92,25 @@ const StorageIndicator = () => {
 
   const tooltip = `Free: ${formattedFree} (${freePercentText})\nUsed: ${formattedUsed} (${usedPercentText})\nTotal: ${formattedTotal}`;
 
+  const usagePercent = Math.min(100, Math.round(usedPercentage || 0));
+
   return (
-    <span className="glass-chip storage-indicator" title={tooltip} aria-live="polite">
-      Free {formattedFree}
-    </span>
+    <div
+      className="group relative flex items-center gap-3 rounded-xl border border-white/20 bg-gradient-to-r from-white/30 to-blue-100/20 backdrop-blur-2xl px-4 py-2 text-sm font-medium text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] hover:border-blue-300 transition-all"
+      title={tooltip}
+      aria-live="polite"
+    >
+      <Database size={16} className="text-blue-500" />
+      <div className="flex flex-col">
+        <span className="font-semibold text-slate-800">Free {formattedFree}</span>
+        <div className="relative mt-1 h-[6px] w-32 overflow-hidden rounded-full bg-white/50 backdrop-blur-sm">
+          <div
+            className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 transition-all duration-500"
+            style={{ width: `${usagePercent}%` }}
+          />
+        </div>
+      </div>
+    </div>
   );
 };
 

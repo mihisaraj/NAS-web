@@ -16,6 +16,8 @@ import {
   unlockItem,
   fetchFileContent,
   subscribeToEvents,
+  API_ROOT,
+  getAuthToken,
 } from '../services/api.js';
 
 const sanitizePath = (input) => {
@@ -1027,22 +1029,26 @@ const FileManager = ({
 
     try {
       setError('');
-      const { blob, filename } = await fetchFileContent(
-        item.path || joinPath(currentPath, item.name),
-        {
-          password,
-          download: true,
-        }
-      );
-      const downloadUrl = URL.createObjectURL(blob);
+      const pathParam = encodeURIComponent(item.path || joinPath(currentPath, item.name));
+      const token = getAuthToken();
+      const params = new URLSearchParams();
+      params.set('path', decodeURIComponent(pathParam));
+      params.set('download', '1');
+      if (token) {
+        params.set('token', token);
+      }
+      if (password) {
+        params.set('password', password);
+      }
+      const directUrl = `${API_ROOT}/items/content?${params.toString()}`;
       const anchor = document.createElement('a');
-      anchor.href = downloadUrl;
-      anchor.download = filename || item.name;
+      anchor.href = directUrl;
+      anchor.rel = 'noopener';
+      anchor.download = item.name;
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
-      URL.revokeObjectURL(downloadUrl);
-      setMessage(`Download started for “${filename || item.name}”`);
+      setMessage(`Download started for “${item.name}”`);
     } catch (err) {
       setError(err.message || 'Unable to download file');
     }
